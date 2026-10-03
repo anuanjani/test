@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Autonomous Tribal Survival - Full Build</title>
+    <style>
+        body { margin: 0; padding: 0; background-color: #1a1a1a; color: white; font-family: sans-serif; overflow: hidden; user-select: none; }
+        canvas { display: block; background-color: #2e4a27; }
+        
+        /* HUD Top Bar */
+        #hud { position: absolute; top: 0; left: 0; width: 100%; background: rgba(0,0,0,0.85); padding: 10px; display: flex; justify-content: space-around; font-size: 13px; z-index: 10; border-bottom: 2px solid #444; }
+        .hud-item { font-weight: bold; }
+        .clickable { cursor: pointer; color: #ff6666; text-decoration: underline; }
+        
+        /* Panels */
+        .panel { position: absolute; background: rgba(0,0,0,0.8); border: 1px solid #555; padding: 10px; border-radius: 5px; font-size: 12px; z-index: 5; max-height: 80vh; overflow-y: auto; }
+        
+        /* Steward Controls (Left) */
+        #steward-panel { top: 50px; left: 10px; width: 160px; }
+        #steward-panel h3 { margin: 0 0 10px 0; font-size: 14px; color: #f1c40f; }
+        .toggle-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+        
+        /* Construction Controls (Right) */
+        #build-panel { top: 50px; right: 10px; width: 180px; }
+        #build-panel h3 { margin: 0 0 10px 0; font-size: 14px; color: #3498db; }
+        .build-btn { width: 100%; padding: 6px; margin-bottom: 5px; background: #333; color: white; border: 1px solid #777; border-radius: 3px; cursor: pointer; }
+        .build-btn:hover { background: #555; }
+        .build-btn:disabled { background: #222; color: #555; border-color: #333; cursor: not-allowed; }
+        .cost-text { font-size: 10px; color: #aaa; margin-bottom: 10px; display: block; }
+        
+        /* Speed Controls (Bottom) */
+        #speed-panel { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; z-index: 5; }
+        .speed-btn { padding: 10px 20px; background: #444; color: white; border: 2px solid #222; border-radius: 5px; font-weight: bold; }
+        .speed-btn.active { border-color: #2ecc71; background: #27ae60; }
+        
+        /* Mortuary Modal */
+        #log-modal { display: none; position: absolute; top: 20%; left: 50%; transform: translateX(-50%); width: 300px; background: #222; border: 2px solid #e74c3c; padding: 15px; z-index: 20; border-radius: 8px; max-height: 50vh; overflow-y: auto; }
+        #log-modal h3 { margin-top: 0; color: #e74c3c; }
+    </style>
+</head>
+<body>
+
+    <!-- Top HUD -->
+    <div id="hud">
+        <span class="hud-item" id="hud-wood">Wood: 5/100</span>
+        <span class="hud-item" id="hud-food">Food: 5/100</span>
+        <span class="hud-item" id="hud-water">Water: 5/100</span>
+        <span class="hud-item" id="hud-pop">Pop: 4 (Beds: 2)</span>
+        <span class="hud-item clickable" onclick="toggleModal()">☠️ Dead: 0</span>
+        <span class="hud-item" id="hud-day">Day: 0</span>
+    </div>
+
+    <!-- Steward Controls -->
+    <div id="steward-panel" class="panel">
+        <h3>Steward Access</h3>
+        <div id="locks-container"></div>
+    </div>
+
+    <!-- Construction / Economics -->
+    <div id="build-panel" class="panel">
+        <h3>Colony Planning</h3>
+        <p style="font-size:10px; color:#ddd;">Select a goal. Entities will automatically gather missing resources.</p>
+        <div id="build-buttons"></div>
+        <div style="margin-top:10px; font-weight:bold; color:#f1c40f;" id="current-goal">Active Goal: None</div>
+    </div>
+
+    <!-- Speed Controls -->
+    <div id="speed-panel">
+        <button class="speed-btn active" id="spd1" onclick="setSpeed(1)">1x</button>
+        <button class="speed-btn" id="spd5" onclick="setSpeed(5)">5x</button>
+        <button class="speed-btn" id="spd10" onclick="setSpeed(10)">10x</button>
+        <button class="speed-btn" id="spd20" onclick="setSpeed(20)">20x</button>
+    </div>
+
+    <!-- Mortuary Modal -->
+    <div id="log-modal">
+        <h3>Tribal Autopsy Log</h3>
+        <ul id="dead-list" style="padding-left: 20px; font-size:12px;"></ul>
+        <button onclick="toggleModal()" style="margin-top:10px; width:100%;">Close</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Scale canvas to device size
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // --- GAME STATE ---
+    let simSpeed = 1;
+    let timeDay = 0;
+    const TWO_YEARS = 730;
+    
+    let storage = { wood: 5, food: 5, water: 5 };
+    let caps = { wood: 100, food: 100, water: 100 };
+    
+    let deceased = [];
+    let entityCounter = 5;
+    
+    // Buildings State
+    let bldgs = {
+        camp: { level: 0, cap: 2 }, // Starts at L0 (2 beds)
+        foodDepot: { level: -1 },   // -1 means unbuilt
+        woodDepot: { level: -1 },
+        waterDepot: { level: -1 }
+    };
+
+    // Construction Costs (From Prompt)
+    const costs = {
+        camp0: { w: 80, f: 25, wt: 80, name: "New Camp L0 (+2 beds)", type: 'camp', targetLevel: 0 },
+        camp1: { w: 55, f: 18, wt: 55, name: "Upgrade Camp L1", type: 'camp', targetLevel: 1 },
+        camp2: { w: 90, f: 55, wt: 100, name: "Upgrade Camp L2", type: 'camp', targetLevel: 2 },
+        food0: { w: 30, f: 40, wt: 40, name: "Build Food Depot L0", type: 'foodDepot', targetLevel: 0, newCap: 120 },
+        food1: { w: 55, f: 90, wt: 50, name: "Upgrade Food Depot L1", type: 'foodDepot', targetLevel: 1, newCap: 250 },
+        food2: { w: 55, f: 105, wt: 80, name: "Upgrade Food Depot L2", type: 'foodDepot', targetLevel: 2, newCap: 500 },
+        wood0: { w: 40, f: 15, wt: 30, name: "Build Wood Depot L0", type: 'woodDepot', targetLevel: 0, newCap: 150 },
+        wood1: { w: 90, f: 55, wt: 50, name: "Upgrade Wood Depot L1", type: 'woodDepot', targetLevel: 1, newCap: 300 },
+        wood2: { w: 120, f: 55, wt: 80, name: "Upgrade Wood Depot L2", type: 'woodDepot', targetLevel: 2, newCap: 600 },
+        water0: { w: 30, f: 15, wt: 40, name: "Build Water Depot L0", type: 'waterDepot', targetLevel: 0, newCap: 150 },
+        water1: { w: 50, f: 55, wt: 90, name: "Upgrade Water Depot L1", type: 'waterDepot', targetLevel: 1, newCap: 300 },
+        water2: { w: 80, f: 55, wt: 120, name: "Upgrade Water Depot L2", type: 'waterDepot', targetLevel: 2, newCap: 600 },
+    };
+
+    let activeGoal = null;
+
+    // --- MAP NODES ---
+    // Positions relative to screen size for mobile compatibility
+    const w = canvas.width;
+    const h = canvas.height;
+    const nodes = {
+        river: { x: w*0.15, y: h*0.15, name: 'River', type: 'water', color: '#3498db', locked: false, show: true },
+        pond: { x: w*0.85, y: h*0.85, name: 'Distant Pond', type: 'water', color: '#2980b9', locked: false, show: true },
+        well: { x: w*0.45, y: h*0.55, name: 'Ground Water (Well)', type: 'water', color: '#00cec9', locked: false, show: false },
+        forest: { x: w*0.8, y: h*0.2, name: 'Forest', type: 'wood', color: '#27ae60', locked: false, show: true },
+        berries: { x: w*0.2, y: h*0.8, name: 'Berries', type: 'food', color: '#e74c3c', locked: false, show: true },
+        boars: { x: w*0.8, y: h*0.5, name: 'Wild Boars (Hunt)', type: 'hunt', color: '#d35400', locked: false, show: true },
+        med_herbs: { x: w*0.2, y: h*0.45, name: 'Medicinal Herbs', type: 'med', color: '#2ecc71', locked: false, show: true },
+        tox_herbs: { x: w*0.5, y: h*0.8, name: 'Toxic Herbs', type: 'tox', color: '#9b59b6', locked: false, show: true },
+        camp: { x: w*0.5, y: h*0.5, name: 'Camp Base', type: 'camp', color: '#8e44ad', locked: false, show: true }
+    };
+
+    let groundwaterResearch = 0;
+
+    // --- ENTITIES ---
+    let entities = [
+        { id: 'M1', sex: 'M', x: w*0.5, y: h*0.5, hp: 100, stam: 100, wat: 100, food: 100, daysUnsheltered: 0, state: 'IDLE', color: '#3498db', pregnant: false },
+        { id: 'M2', sex: 'M', x: w*0.52, y: h*0.52, hp: 100, stam: 100, wat: 100, food: 100, daysUnsheltered: 0, state: 'IDLE', color: '#3498db', pregnant: false },
+        { id: 'F1', sex: 'F', x: w*0.48, y: h*0.48, hp: 100, stam: 100, wat: 100, food: 100, daysUnsheltered: 0, state: 'IDLE', color: '#fd79a8', pregnant: false },
+        { id: 'F2', sex: 'F', x: w*0.5, y: h*0.48, hp: 100, stam: 100, wat: 100, food: 100, daysUnsheltered: 0, state: 'IDLE', color: '#fd79a8', pregnant: false }
+    ];
+
+    // --- UI SETUP ---
+    function setupUI() {
+        // Steward Checkboxes
+        let locksHtml = '';
+        for (let key in nodes) {
+            if (key === 'camp') continue; // Cant lock camp
+            locksHtml += `
+                <div class="toggle-row">
+                    <label>${nodes[key].name}</label>
+                    <input type="checkbox" onchange="toggleLock('${key}', this.checked)">
+                </div>
+            `;
+        }
+        document.getElementById('locks-container').innerHTML = locksHtml;
+        updateBuildMenu();
+    }
+
+    function toggleLock(key, isLocked) {
+        nodes[key].locked = isLocked;
+    }
+
+    function setGoal(goalKey) {
+        activeGoal = costs[goalKey];
+        document.getElementById('current-goal').innerText = "Active Goal: " + activeGoal.name;
+        updateBuildMenu();
+    }
+
+    function updateBuildMenu() {
+        let html = '';
+        
+        // Camp logic
+        if (bldgs.camp.level === 0) html += makeBuildBtn('camp1');
+        else if (bldgs.camp.level === 1) html += makeBuildBtn('camp2');
+        else if (bldgs.camp.level === 2) html += makeBuildBtn('camp0'); // Built max, build new L0
+
+        // Depots logic
+        if (bldgs.foodDepot.level === -1) html += makeBuildBtn('food0');
+        else if (bldgs.foodDepot.level === 0) html += makeBuildBtn('food1');
+        else if (bldgs.foodDepot.level === 1) html += makeBuildBtn('food2');
+
+        if (bldgs.woodDepot.level === -1) html += makeBuildBtn('wood0');
+        else if (bldgs.woodDepot.level === 0) html += makeBuildBtn('wood1');
+        else if (bldgs.woodDepot.level === 1) html += makeBuildBtn('wood2');
+
+        if (bldgs.waterDepot.level === -1) html += makeBuildBtn('water0');
+        else if (bldgs.waterDepot.level === 0) html += makeBuildBtn('water1');
+        else if (bldgs.waterDepot.level === 1) html += makeBuildBtn('water2');
+
+        document.getElementById('build-buttons').innerHTML = html;
+    }
+
+    function makeBuildBtn(key) {
+        let c = costs[key];
+        let disabled = (activeGoal === c) ? 'disabled' : '';
+        let btnText = (activeGoal === c) ? 'Gathering Resources...' : c.name;
+        return `
+            <button class="build-btn" ${disabled} onclick="setGoal('${key}')">${btnText}</button>
+            <span class="cost-text">Cost: ${c.w}W | ${c.f}F | ${c.wt}H2O</span>
+        `;
+    }
+
+    function toggleModal() {
+        let m = document.getElementById('log-modal');
+        m.style.display = m.style.display === 'block' ? 'none' : 'block';
+    }
+
+    function setSpeed(s) {
+        simSpeed = s;
+        document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById('spd'+s).classList.add('active');
+    }
+
+    function logDeath(entity, cause) {
+        deceased.push(`Day ${Math.floor(timeDay)}: ${entity.id} (${entity.sex}) - ${cause}`);
+        let ul = document.getElementById('dead-list');
+        ul.innerHTML += `<li>${deceased[deceased.length-1]}</li>`;
+    }
+
+    // --- AI LOGIC ---
+    function getClosestUnlocked(typeArray, entity) {
+        let best = null;
+        let minDist = Infinity;
+        for (let key in nodes) {
+            let n = nodes[key];
+            if (n.show && !n.locked && typeArray.includes(n.type)) {
+                let dist = Math.hypot(n.x - entity.x, n.y - entity.y);
+                if (dist < minDist) { minDist = dist; best = n; }
+            }
+        }
+        return best;
+    }
+
+    function processAI(dt) {
+        let dayInc = (dt * simSpeed) / 100;
+        timeDay += dayInc;
+
+        // Total Shelter Capacity
+        let shelterCap = bldgs.camp.cap;
+
+        // Check active goal construction
+        if (activeGoal) {
+            if (storage.wood >= activeGoal.w && storage.food >= activeGoal.f && storage.water >= activeGoal.wt) {
+                // Deduct costs
+                storage.wood -= activeGoal.w;
+                storage.food -= activeGoal.f;
+                storage.water -= activeGoal.wt;
+                
+                // Apply building upgrades
+                if (activeGoal.type === 'camp') {
+                    if (activeGoal.targetLevel === 0) bldgs.camp.cap += 2;
+                    else if (activeGoal.targetLevel === 1) { bldgs.camp.level = 1; bldgs.camp.cap = 3; }
+                    else if (activeGoal.targetLevel === 2) { bldgs.camp.level = 2; bldgs.camp.cap = 5; }
+                } else if (activeGoal.type === 'foodDepot') {
+                    bldgs.foodDepot.level = activeGoal.targetLevel;
+                    caps.food = activeGoal.newCap;
+                } else if (activeGoal.type === 'woodDepot') {
+                    bldgs.woodDepot.level = activeGoal.targetLevel;
+                    caps.wood = activeGoal.newCap;
+                } else if (activeGoal.type === 'waterDepot') {
+                    bldgs.waterDepot.level = activeGoal.targetLevel;
+                    caps.water = activeGoal.newCap;
+                }
+
+                activeGoal = null;
+                document.getElementById('current-goal').innerText = "Active Goal: None";
+                updateBuildMenu();
+            }
+        }
+
+        for (let i = entities.length - 1; i >= 0; i--) {
+            let e = entities[i];
+            
+            // Vitals Decay
+            e.wat -= (0.08 * simSpeed * dt);
+            e.food -= (0.05 * simSpeed * dt);
+            e.stam -= (0.03 * simSpeed * dt);
+
+            // Shelter check (First N entities get shelter)
+            if (i >= shelterCap) {
+                e.daysUnsheltered += dayInc;
+                if (e.daysUnsheltered >= TWO_YEARS) {
+                    logDeath(e, 'Exposure (2 Yrs Unsheltered)');
+                    entities.splice(i, 1);
+                    continue;
+                }
+            } else {
+                e.daysUnsheltered = 0; 
+            }
+
+            // Death Checks
+            if (e.hp <= 0) { logDeath(e, 'Injuries / Poison'); entities.splice(i, 1); continue; }
+            if (e.wat <= 0) { logDeath(e, 'Dehydration'); entities.splice(i, 1); continue; }
+            if (e.food <= 0) { logDeath(e, 'Starvation'); entities.splice(i, 1); continue; }
+
+            // AI Needs Priority System
+            let targetNode = null;
+            let speedMult = (e.stam <= 0) ? 0.5 : 1.0; // Exhausted = slow
+
+            // 1. Critical Needs
+            if (e.hp < 80) {
+                targetNode = getClosestUnlocked(['med'], e) || nodes.camp;
+            } else if (e.wat < 30) {
+                targetNode = getClosestUnlocked(['water'], e);
+            } else if (e.food < 30) {
+                targetNode = getClosestUnlocked(['food', 'hunt'], e);
+            } else if (e.stam < 20) {
+                targetNode = nodes.camp;
+            } 
+            // 2. Colony Construction Gathering
+            else if (activeGoal) {
+                if (storage.wood < activeGoal.w) targetNode = getClosestUnlocked(['wood'], e);
+                else if (storage.water < activeGoal.wt) targetNode = getClosestUnlocked(['water'], e);
+                else if (storage.food < activeGoal.f) targetNode = getClosestUnlocked(['food', 'hunt'], e);
+            }
+            // 3. General Gathering for safety (up to max)
+            else {
+                if (storage.water < caps.water * 0.5) targetNode = getClosestUnlocked(['water'], e);
+                else if (storage.food < caps.food * 0.5) targetNode = getClosestUnlocked(['food', 'hunt'], e);
+                else if (storage.wood < caps.wood * 0.5) targetNode = getClosestUnlocked(['wood'], e);
+                else targetNode = nodes.camp; // Default to camp
+            }
+
+            // Movement & Interaction
+            if (targetNode) {
+                let dist = Math.hypot(targetNode.x - e.x, targetNode.y - e.y);
+                if (dist > 15) {
+                    e.state = `Going to ${targetNode.name}`;
+                    e.x += ((targetNode.x - e.x) / dist) * simSpeed * speedMult;
+                    e.y += ((targetNode.y - e.y) / dist) * simSpeed * speedMult;
+                } else {
+                    // Interaction Logic
+                    if (targetNode.type === 'water') {
+                        e.wat = Math.min(100, e.wat + 1 * simSpeed);
+                        if (e.wat >= 100) storage.water = Math.min(caps.water, storage.water + 5);
+                        e.state = "Drinking (Must hit 100%)";
+                        if (targetNode === nodes.pond) {
+                            groundwaterResearch += 0.05 * simSpeed;
+                            if (groundwaterResearch >= 100 && !nodes.well.show) {
+                                nodes.well.show = true;
+                                console.log("Ground water discovered!");
+                            }
+                        }
+                    } else if (targetNode.type === 'food') {
+                        e.food = Math.min(100, e.food + 1 * simSpeed);
+                        storage.food = Math.min(caps.food, storage.food + 0.1 * simSpeed);
+                        e.state = "Gathering Berries";
+                    } else if (targetNode.type === 'hunt') {
+                        e.food = Math.min(100, e.food + 2 * simSpeed);
+                        storage.food = Math.min(caps.food, storage.food + 0.2 * simSpeed);
+                        e.hp -= (0.5 * simSpeed); // Takes damage while hunting!
+                        e.state = "Hunting (-HP Risk)";
+                    } else if (targetNode.type === 'wood') {
+                        storage.wood = Math.min(caps.wood, storage.wood + 0.1 * simSpeed);
+                        e.state = "Chopping Wood";
+                        e.stam -= (0.1 * simSpeed); // Heavy labor
+                    } else if (targetNode.type === 'med') {
+                        e.hp = Math.min(100, e.hp + 0.5 * simSpeed);
+                        e.state = "Healing";
+                    } else if (targetNode.type === 'tox') {
+                        e.hp -= 2 * simSpeed; // Ouch!
+                        e.state = "Eating Bad Herb!";
+                    } else if (targetNode.type === 'camp') {
+                        e.stam = Math.min(100, e.stam + 0.5 * simSpeed);
+                        e.state = "Resting at Camp";
+                    }
+                }
+            }
+        }
+
+        // Reproduction Check
+        if (Math.random() < 0.01 * simSpeed && entities.length < shelterCap && storage.food >= 25) {
+            let m = entities.find(e => e.sex === 'M' && e.hp >= 75 && e.state === "Resting at Camp");
+            let f = entities.find(e => e.sex === 'F' && e.hp >= 75 && e.state === "Resting at Camp");
+            if (m && f) {
+                // Spawn Child
+                let isM = Math.random() > 0.5;
+                entities.push({
+                    id: (isM?'M':'F') + entityCounter++, sex: isM?'M':'F', 
+                    x: nodes.camp.x, y: nodes.camp.y, hp: 100, stam: 100, wat: 100, food: 100, daysUnsheltered: 0, state: 'IDLE', color: isM?'#3498db':'#fd79a8', pregnant: false
+                });
+                storage.food -= 10; // cost of raising child
+            }
+        }
+    }
+
+    // --- RENDER LOOP ---
+    let lastTime = performance.now();
+    function loop(now) {
+        let dt = (now - lastTime) / 16;
+        lastTime = now;
+        
+        processAI(dt);
+
+        // Clear Canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Draw Nodes
+        for (let key in nodes) {
+            let n = nodes[key];
+            if (!n.show) continue;
+            
+            ctx.fillStyle = n.color;
+            ctx.beginPath(); ctx.arc(n.x, n.y, 25, 0, Math.PI*2); ctx.fill();
+            
+            ctx.fillStyle = 'white'; ctx.font = '12px Arial'; ctx.textAlign = 'center';
+            ctx.fillText(n.name, n.x, n.y - 30);
+            
+            if (n.locked) {
+                ctx.fillStyle = 'red'; ctx.font = '20px Arial';
+                ctx.fillText('🔒', n.x, n.y + 8);
+            }
+        }
+
+        // Draw Entities
+        entities.forEach(e => {
+            ctx.fillStyle = e.color;
+            ctx.beginPath(); ctx.arc(e.x, e.y, 10, 0, Math.PI*2); ctx.fill();
+            
+            // HP Bar
+            ctx.fillStyle = 'red'; ctx.fillRect(e.x - 15, e.y - 20, 30, 4);
+            ctx.fillStyle = '#2ecc71'; ctx.fillRect(e.x - 15, e.y - 20, 30 * (e.hp/100), 4);
+            
+            ctx.fillStyle = 'white'; ctx.font = '10px Arial'; ctx.textAlign = 'center';
+            ctx.fillText(e.id, e.x, e.y + 4);
+            ctx.fillText(e.state, e.x, e.y - 25);
+            
+            // Exposure warning
+            if (e.daysUnsheltered > 0) {
+                ctx.fillStyle = 'orange';
+                ctx.fillText(`Unsheltered: ${Math.floor(e.daysUnsheltered)}d`, e.x, e.y + 20);
+            }
+        });
+
+        // Update HUD HTML
+        document.getElementById('hud-wood').innerText = `Wood: ${Math.floor(storage.wood)}/${caps.wood}`;
+        document.getElementById('hud-food').innerText = `Food: ${Math.floor(storage.food)}/${caps.food}`;
+        document.getElementById('hud-water').innerText = `Water: ${Math.floor(storage.water)}/${caps.water}`;
+        document.getElementById('hud-pop').innerText = `Pop: ${entities.length} (Beds: ${bldgs.camp.cap})`;
+        document.getElementById('hud-day').innerText = `Day: ${Math.floor(timeDay)}`;
+        document.querySelector('.clickable').innerText = `☠️️ Dead: ${deceased.length}`;
+
+        requestAnimationFrame(loop);
+    }
+
+    // Initialize
+    setupUI();
+    loop(performance.now());
+</script>
+</body>
+</html>
