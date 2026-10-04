@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Autonomous Tribal Survival - Balanced AI</title>
+    <title>Autonomous Tribal Survival - Smart Pantry AI</title>
     <style>
         body { margin: 0; padding: 0; background-color: #1a1a1a; color: white; font-family: sans-serif; overflow: hidden; user-select: none; }
         canvas { display: block; background-color: #2e4a27; }
@@ -74,8 +74,6 @@
     let simSpeed = 1;
     let timeDay = 0;
     const TWO_YEARS = 730;
-    
-    // BALANCE FIX: Increased vision radius so they can find things easier
     const VISION_RADIUS = 180; 
     
     let storage = { wood: 5, food: 5, water: 5 };
@@ -122,7 +120,6 @@
 
     let groundwaterResearch = 0;
     
-    // BALANCE FIX: Gave them starting knowledge of the river and 1 berry bush so they don't immediately starve.
     let baseMemory = { 
         camp: { known: true, stock: Infinity, locked: false, lastSeenDay: 0 },
         river: { known: true, stock: Infinity, locked: false, lastSeenDay: 0 },
@@ -233,7 +230,7 @@
         for (let i = entities.length - 1; i >= 0; i--) {
             let e = entities[i];
             
-            // Vision Radius Discovery Loop
+            // Vision Radius Discovery
             for (let key in nodes) {
                 let n = nodes[key];
                 if (n.show && Math.hypot(n.x - e.x, n.y - e.y) < VISION_RADIUS) {
@@ -241,11 +238,10 @@
                 }
             }
 
-            // BALANCE FIX: Reduced metabolism (decay rates) by ~65%. 
-            // Now they survive much longer while searching for resources.
-            e.wat -= (0.025 * simSpeed * dt);
-            e.food -= (0.015 * simSpeed * dt);
-            e.stam -= (0.015 * simSpeed * dt);
+            // Slower Metabolism to support long travel
+            e.wat -= (0.015 * simSpeed * dt);
+            e.food -= (0.010 * simSpeed * dt);
+            e.stam -= (0.010 * simSpeed * dt);
 
             if (!e.hasBed) {
                 e.daysUnsheltered += dayInc;
@@ -260,13 +256,13 @@
             let speedMult = (e.stam <= 0) ? 0.5 : 1.0;
             let isDesperate = false;
 
-            if (e.wat < 25) { 
-                targetNode = getClosestKnown(['water'], e); 
+            // BUG FIX: The AI now knows to eat/drink from the Camp Storage!
+            if (e.wat < 30) { 
+                targetNode = (storage.water > 0) ? nodes.camp : getClosestKnown(['water'], e); 
                 isDesperate = true; e.state = "Dying of Thirst!"; speedMult = 2.0; 
             }
-            else if (e.food < 25) { 
-                if (e.hp < 50) targetNode = getClosestKnown(['food'], e); 
-                else targetNode = getClosestKnown(['food', 'hunt'], e); 
+            else if (e.food < 30) { 
+                targetNode = (storage.food > 0) ? nodes.camp : (e.hp < 50 ? getClosestKnown(['food'], e) : getClosestKnown(['food', 'hunt'], e)); 
                 isDesperate = true; e.state = "Starving!"; speedMult = 2.0; 
             }
             else if (e.hp < 40) { 
@@ -280,8 +276,8 @@
             
             if (!isDesperate) {
                 if (e.hp < 80) { targetNode = getClosestKnown(['med'], e); if(!targetNode) targetNode = nodes.camp; }
-                else if (e.wat < 45) targetNode = getClosestKnown(['water'], e);
-                else if (e.food < 45) targetNode = getClosestKnown(['food', 'hunt'], e);
+                else if (e.wat < 50) { targetNode = (storage.water > 10) ? nodes.camp : getClosestKnown(['water'], e); }
+                else if (e.food < 50) { targetNode = (storage.food > 10) ? nodes.camp : getClosestKnown(['food', 'hunt'], e); }
                 else if (e.stam < 25) targetNode = nodes.camp;
                 else if (activeGoal) {
                     if (storage.wood < activeGoal.w) targetNode = getClosestKnown(['wood'], e);
@@ -352,6 +348,18 @@
                     } else if (targetNode.type === 'camp') {
                         e.stam = Math.min(100, e.stam + 0.5 * simSpeed * dt);
                         e.state = "Resting at Camp";
+                        
+                        // NEW FIX: Eat and Drink directly from Camp Storage!
+                        if (e.wat < 100 && storage.water > 0) {
+                            let drink = Math.min(100 - e.wat, storage.water, 2 * simSpeed * dt);
+                            e.wat += drink; storage.water -= drink;
+                            e.state = "Drinking from Storage";
+                        }
+                        if (e.food < 100 && storage.food > 0) {
+                            let eat = Math.min(100 - e.food, storage.food, 2 * simSpeed * dt);
+                            e.food += eat; storage.food -= eat;
+                            e.state = "Eating from Storage";
+                        }
                         
                         for (let key in e.memory) {
                             if (!tribeKnowledge[key] || e.memory[key].lastSeenDay > tribeKnowledge[key].lastSeenDay) {
