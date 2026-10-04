@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Autonomous Tribal Survival - Smart Priorities v10</title>
+    <title>Autonomous Tribal Survival - Balanced Ecosystem v11</title>
     <style>
         body { margin: 0; padding: 0; background-color: #1a1a1a; color: white; font-family: sans-serif; overflow: hidden; user-select: none; }
         canvas { display: block; background-color: #2e4a27; }
@@ -87,10 +87,10 @@
     window.addEventListener('resize', resize);
     resize();
 
-    let simSpeed = 1; let timeDay = 0; const TWO_YEARS = 730; const VISION_RADIUS = 200; 
+    let simSpeed = 1; let timeDay = 0; const TWO_YEARS = 730; const VISION_RADIUS = 250; 
     
-    // Base buffer 65 for all
-    let storage = { wood: 20, stone: 20, food: 35, water: 35, meds: 0, tox: 0 };
+    // Balanced starting reserves to survive early game
+    let storage = { wood: 30, stone: 30, food: 40, water: 40, meds: 0, tox: 0 };
     let caps = { wood: 65, stone: 65, food: 65, water: 65, meds: 65, tox: 65 };
     
     let deceased = []; let entityCounter = 5; let activePredators = [];
@@ -98,11 +98,8 @@
     let bldgs = { 
         camps: 1, 
         machineShop: { level: -1 }, 
-        foodDepot: { level: -1 }, 
-        woodDepot: { level: -1 }, 
-        waterDepot: { level: -1 }, 
-        medsDepot: { level: -1 }, 
-        stoneDepot: { level: -1 } 
+        foodDepot: { level: -1 }, woodDepot: { level: -1 }, 
+        waterDepot: { level: -1 }, medsDepot: { level: -1 }, stoneDepot: { level: -1 } 
     };
 
     const costs = {
@@ -127,24 +124,28 @@
     let activeGoal = null;
     const w = canvas.width, h = canvas.height;
     
+    // NEW LOGIC: Tightly cluster starting resources around the camp
     const nodes = {
-        river: { x: w*0.1, y: h*0.15, name: 'River', type: 'water', color: '#3498db', locked: false, show: true, stock: Infinity, max: Infinity },
+        camp1: { x: w*0.5, y: h*0.5, name: 'Camp 1', type: 'camp', color: '#f39c12', locked: false, show: true, stock: Infinity, max: Infinity },
+        river: { x: w*0.55, y: h*0.4, name: 'River', type: 'water', color: '#3498db', locked: false, show: true, stock: Infinity, max: Infinity },
+        berries1: { x: w*0.45, y: h*0.55, name: 'Berry Grove', type: 'food', color: '#e74c3c', locked: false, show: true, stock: 1200, max: 1200 },
+        forest1: { x: w*0.4, y: h*0.4, name: 'Deep Forest', type: 'wood', color: '#27ae60', locked: false, show: true, stock: 3000, max: 3000 },
+        quarry1: { x: w*0.6, y: h*0.6, name: 'Stone Quarry', type: 'stone', color: '#7f8c8d', locked: false, show: true, stock: 2500, max: 2500 },
+        
+        // Farther resources for exploration
         pond1: { x: w*0.85, y: h*0.85, name: 'Distant Pond', type: 'water', color: '#2980b9', locked: false, show: true, stock: 1500, max: 1500 },
-        well: { x: w*0.45, y: h*0.55, name: 'Ground Water (Well)', type: 'water', color: '#00cec9', locked: false, show: false, stock: Infinity, max: Infinity },
-        forest1: { x: w*0.8, y: h*0.2, name: 'Deep Forest', type: 'wood', color: '#27ae60', locked: false, show: true, stock: 3000, max: 3000 },
-        quarry1: { x: w*0.7, y: h*0.3, name: 'Stone Quarry', type: 'stone', color: '#7f8c8d', locked: false, show: true, stock: 2500, max: 2500 },
-        berries1: { x: w*0.2, y: h*0.8, name: 'Berry Grove', type: 'food', color: '#e74c3c', locked: false, show: true, stock: 1200, max: 1200 },
         boars1: { x: w*0.8, y: h*0.5, name: 'Boar Pack', type: 'hunt', color: '#d35400', locked: false, show: true, stock: 1500, max: 1500 },
-        med_herbs1: { x: w*0.3, y: h*0.45, name: 'Med Herbs', type: 'med', color: '#1abc9c', locked: false, show: true, stock: 500, max: 500 },
-        tox_herbs1: { x: w*0.5, y: h*0.8, name: 'Toxic Herbs', type: 'tox', color: '#9b59b6', locked: false, show: true, stock: 500, max: 500 },
-        camp1: { x: w*0.5, y: h*0.5, name: 'Camp 1', type: 'camp', color: '#f39c12', locked: false, show: true, stock: Infinity, max: Infinity }
+        med_herbs1: { x: w*0.2, y: h*0.3, name: 'Med Herbs', type: 'med', color: '#1abc9c', locked: false, show: true, stock: 500, max: 500 },
+        tox_herbs1: { x: w*0.2, y: h*0.8, name: 'Toxic Herbs', type: 'tox', color: '#9b59b6', locked: false, show: true, stock: 500, max: 500 }
     };
 
     let groundwaterResearch = 0;
     let baseMemory = { 
         camp1: { known: true, stock: Infinity, locked: false, lastSeenDay: 0 },
         river: { known: true, stock: Infinity, locked: false, lastSeenDay: 0 },
-        berries1: { known: true, stock: 1200, locked: false, lastSeenDay: 0 }
+        berries1: { known: true, stock: 1200, locked: false, lastSeenDay: 0 },
+        forest1: { known: true, stock: 3000, locked: false, lastSeenDay: 0 },
+        quarry1: { known: true, stock: 2500, locked: false, lastSeenDay: 0 }
     };
     let tribeKnowledge = JSON.parse(JSON.stringify(baseMemory));
 
@@ -204,13 +205,15 @@
     }
 
     function determineColonyGoal() {
-        // EMERGENCY OVERRIDES (Prevents colony starvation)
         if (storage.food < 15) return { type: 'panic_food', name: "EMERGENCY: Fetch Food!" };
         if (storage.water < 15) return { type: 'panic_water', name: "EMERGENCY: Fetch Water!" };
 
         let totalBeds = bldgs.camps * 4;
         
-        // Priority 1: Expand Depots if full
+        // Priority 1: Shelter
+        if (entities.length >= totalBeds && storage.wood >= costs.camp.w && storage.stone >= costs.camp.st) return costs.camp;
+
+        // Priority 2: Expand Depots if full (To prevent waste)
         if (storage.food >= caps.food * 0.8) {
             if (bldgs.foodDepot.level === -1) return costs.f0;
             if (bldgs.foodDepot.level === 0) return costs.f1;
@@ -222,12 +225,13 @@
             if (bldgs.waterDepot.level === 1) return costs.wt2;
         }
 
-        // Priority 2: Machine Shop
-        if (bldgs.machineShop.level === -1 && storage.wood >= 20 && storage.stone >= 20) return costs.shop;
+        // Priority 3: Machine Shop (AI decides to industrialize when it has surplus or faces predators)
+        let needsWeapons = activePredators.length > 0 && entities.some(e => !e.hasWeapon);
+        if (bldgs.machineShop.level === -1 && (needsWeapons || (storage.wood >= 40 && storage.stone >= 40))) {
+            return costs.shop;
+        }
 
-        // Priority 3: Beds (Only if population is STRICTLY greater than beds)
-        if (entities.length > totalBeds && storage.wood >= costs.camp.w && storage.stone >= costs.camp.st) return costs.camp;
-        
+        // Priority 4: Other Depots
         if (storage.wood >= caps.wood * 0.8) {
             if (bldgs.woodDepot.level === -1) return costs.wd0;
             if (bldgs.woodDepot.level === 0) return costs.wd1;
@@ -240,7 +244,7 @@
     }
 
     function constructGoal(goal) {
-        if (goal.type.includes('panic')) return; // Panics don't cost resources
+        if (goal.type.includes('panic')) return;
         
         storage.wood -= (goal.w || 0); storage.food -= (goal.f || 0); 
         storage.water -= (goal.wt || 0); storage.stone -= (goal.st || 0);
@@ -308,6 +312,8 @@
             if (unsheltered.length > 0) unsheltered[0].hasBed = true;
         }
 
+        let isMatingTime = (entities.length < totalBeds && storage.food >= 30);
+
         for (let i = entities.length - 1; i >= 0; i--) {
             let e = entities[i];
             
@@ -316,7 +322,8 @@
                 if (n.show && Math.hypot(n.x - e.x, n.y - e.y) < VISION_RADIUS) e.memory[key] = { known: true, stock: n.stock, locked: n.locked, lastSeenDay: timeDay };
             }
 
-            e.wat -= (0.010 * simSpeed * dt); e.food -= (0.008 * simSpeed * dt); e.stam -= (0.008 * simSpeed * dt);
+            // CONSUMPTION LOGIC: Slowed down to ensure gathering vastly outpaces consumption (Travel time is main constraint)
+            e.wat -= (0.006 * simSpeed * dt); e.food -= (0.005 * simSpeed * dt); e.stam -= (0.005 * simSpeed * dt);
 
             if (!e.hasBed) { e.daysUnsheltered += dayInc; if (e.daysUnsheltered >= TWO_YEARS) { logDeath(e, 'Exposure'); entities.splice(i, 1); continue; }
             } else { e.daysUnsheltered = 0; }
@@ -347,13 +354,19 @@
 
             if (isFleeing || isFighting) continue;
 
-            // TASK HYSTERESIS (Prevents Ping-Ponging)
+            // TASK HYSTERESIS (Sticky Tasks to prevent ping-pong starvation)
             if (e.wat < 30) e.task = 'water';
             if (e.food < 30) e.task = 'food';
             if (e.hp < 40) e.task = 'heal';
             if (e.stam < 20) e.task = 'rest';
             
-            // Do not clear the task until the need is 95% satisfied!
+            // Reproduction Sync: Partners lock into 'court' state and head home together
+            if (!e.task && isMatingTime && e.partnerId && e.hp > 75) {
+                let partner = entities.find(ent => ent.id === e.partnerId);
+                if (partner && partner.hp > 75) { e.task = 'court'; partner.task = 'court'; }
+            }
+
+            // Task Completion Conditions
             if (e.task === 'water' && e.wat >= 95) e.task = null;
             if (e.task === 'food' && e.food >= 95) e.task = null;
             if (e.task === 'heal' && e.hp >= 95) e.task = null;
@@ -362,7 +375,6 @@
             let targetNode = null;
             let speedMult = (e.stam <= 0) ? 0.5 : (e.hasCart ? 1.2 : 1.0);
 
-            // Machine Shop Logic (Only if no personal emergencies)
             if (bldgs.machineShop.level >= 0 && !e.task) {
                 if (!e.hasCart) {
                     if (storage.wood >= 20) {
@@ -387,7 +399,6 @@
                 }
             }
 
-            // Execute locked task or global goal
             if (e.task) {
                 targetNode = null;
                 if (e.task === 'heal') {
@@ -401,6 +412,8 @@
                     e.state = "Hungry!"; speedMult = 2.0; 
                 } else if (e.task === 'rest') {
                     targetNode = getClosestKnown(['camp'], e); e.state = "Resting!";
+                } else if (e.task === 'court') {
+                    targetNode = getClosestKnown(['camp'], e); e.state = "Courting 💞";
                 }
             } 
             else if (!targetNode) {
@@ -429,18 +442,19 @@
             if (targetNode) {
                 let dist = Math.hypot(targetNode.x - e.x, targetNode.y - e.y);
                 if (dist > 15) {
-                    if (!e.state.includes("Cart") && !e.state.includes("Spear")) e.state = `Going to ${targetNode.name}`;
+                    if (!e.state.includes("Cart") && !e.state.includes("Spear") && !e.state.includes("Court")) e.state = `Going to ${targetNode.name}`;
                     e.x += ((targetNode.x - e.x) / dist) * simSpeed * speedMult;
                     e.y += ((targetNode.y - e.y) / dist) * simSpeed * speedMult;
                 } else {
-                    let gatherAmt = (e.hasCart ? 6 : 1.5) * simSpeed * dt;
+                    // PRODUCTION LOGIC: Gathering is 4x to 10x faster than consumption. (Carts make it huge)
+                    let gatherAmt = (e.hasCart ? 12 : 4) * simSpeed * dt;
                     if (targetNode.stock !== Infinity) gatherAmt = Math.min(gatherAmt, targetNode.stock);
                     
                     if (targetNode.type === 'water' && gatherAmt > 0) {
                         e.wat = Math.min(100, e.wat + gatherAmt); storage.water = Math.min(caps.water, storage.water + gatherAmt);
                         if (targetNode.stock !== Infinity) targetNode.stock -= gatherAmt; e.state = "Drinking";
                     } else if (targetNode.type === 'food' && gatherAmt > 0) {
-                        e.food = Math.min(100, e.food + gatherAmt); storage.food = Math.min(caps.food, storage.food + gatherAmt * 0.5);
+                        e.food = Math.min(100, e.food + gatherAmt); storage.food = Math.min(caps.food, storage.food + gatherAmt * 0.8);
                         if (targetNode.stock !== Infinity) targetNode.stock -= gatherAmt; e.state = "Gathering Food";
                     } else if (targetNode.type === 'stone' && gatherAmt > 0) {
                         storage.stone = Math.min(caps.stone, storage.stone + gatherAmt); e.stam -= (0.2 * simSpeed * dt);
@@ -476,11 +490,38 @@
                 e.x += ((e.scoutTarget.x - e.x) / dist) * simSpeed * speedMult; e.y += ((e.scoutTarget.y - e.y) / dist) * simSpeed * speedMult;
             }
         }
+
+        // ACTUAL REPRODUCTION TRIGGER: Guaranteed baby if synced!
+        if (simSpeed > 0 && Math.random() < 0.05 * simSpeed && entities.length < totalBeds && storage.food >= 30) {
+            let m = entities.find(e => e.sex === 'M' && e.hp >= 75 && e.task === 'court');
+            let f = entities.find(e => e.sex === 'F' && e.hp >= 75 && e.task === 'court');
+            if (m && f) {
+                // Successful baby boom! Reset their tasks so they go back to work.
+                m.task = null; f.task = null;
+                storage.food -= 15;
+                let isM = Math.random() > 0.5;
+                entities.push({
+                    id: (isM?'M':'F') + entityCounter++, sex: isM?'M':'F', 
+                    x: m.x, y: m.y, hp: 100, stam: 100, wat: 100, food: 100, 
+                    daysUnsheltered: 0, hasBed: true, partnerId: null, state: 'Just Born!', task: null, color: isM?'#3498db':'#fd79a8',
+                    memory: JSON.parse(JSON.stringify(tribeKnowledge)), scoutTarget: null, hasWeapon: false, hasCart: false
+                });
+            }
+        }
         
+        // POPULATION LOGIC: Dynamic node respawning
         for (let key in nodes) {
             let n = nodes[key];
             if (n.show && n.stock <= 0 && n.stock !== Infinity) {
-                n.x = 50 + Math.random() * (canvas.width - 100); n.y = 50 + Math.random() * (canvas.height - 100); n.stock = n.max;
+                // If population < 15, keep resources somewhat clustered near center to survive. Else, random anywhere!
+                if (entities.length < 15) {
+                    n.x = (w * 0.5) + (Math.random() - 0.5) * 300;
+                    n.y = (h * 0.5) + (Math.random() - 0.5) * 300;
+                } else {
+                    n.x = 50 + Math.random() * (canvas.width - 100); 
+                    n.y = 50 + Math.random() * (canvas.height - 100); 
+                }
+                n.stock = n.max;
                 if (tribeKnowledge[key]) tribeKnowledge[key].known = false;
                 entities.forEach(ent => { if (ent.memory[key]) ent.memory[key].known = false; if (ent.state.includes(n.name)) ent.state = "Resource vanished!"; });
             }
@@ -532,7 +573,7 @@
         document.getElementById('hud-pop').innerText = `👥 ${entities.length} (🛏️ ${bldgs.camps * 4})`;
         
         let y = Math.floor(timeDay/365); let d = Math.floor(timeDay%365);
-        document.getElementById('hud-time').innerText = `Year: ${y}, Day: ${d} (v10)`;
+        document.getElementById('hud-time').innerText = `Year: ${y}, Day: ${d} (v11)`;
         document.querySelector('.clickable').innerText = `💀 ${deceased.length}`;
 
         requestAnimationFrame(loop);
