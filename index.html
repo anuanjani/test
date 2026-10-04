@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Autonomous Tribal Survival - Smart Pantry AI</title>
+    <title>Autonomous Tribal Survival - Dynamic Ecosystem</title>
     <style>
         body { margin: 0; padding: 0; background-color: #1a1a1a; color: white; font-family: sans-serif; overflow: hidden; user-select: none; }
         canvas { display: block; background-color: #2e4a27; }
@@ -230,7 +230,6 @@
         for (let i = entities.length - 1; i >= 0; i--) {
             let e = entities[i];
             
-            // Vision Radius Discovery
             for (let key in nodes) {
                 let n = nodes[key];
                 if (n.show && Math.hypot(n.x - e.x, n.y - e.y) < VISION_RADIUS) {
@@ -238,7 +237,6 @@
                 }
             }
 
-            // Slower Metabolism to support long travel
             e.wat -= (0.015 * simSpeed * dt);
             e.food -= (0.010 * simSpeed * dt);
             e.stam -= (0.010 * simSpeed * dt);
@@ -256,7 +254,6 @@
             let speedMult = (e.stam <= 0) ? 0.5 : 1.0;
             let isDesperate = false;
 
-            // BUG FIX: The AI now knows to eat/drink from the Camp Storage!
             if (e.wat < 30) { 
                 targetNode = (storage.water > 0) ? nodes.camp : getClosestKnown(['water'], e); 
                 isDesperate = true; e.state = "Dying of Thirst!"; speedMult = 2.0; 
@@ -349,7 +346,6 @@
                         e.stam = Math.min(100, e.stam + 0.5 * simSpeed * dt);
                         e.state = "Resting at Camp";
                         
-                        // NEW FIX: Eat and Drink directly from Camp Storage!
                         if (e.wat < 100 && storage.water > 0) {
                             let drink = Math.min(100 - e.wat, storage.water, 2 * simSpeed * dt);
                             e.wat += drink; storage.water -= drink;
@@ -387,12 +383,30 @@
                 }
             } else {
                 if (!e.scoutTarget || Math.hypot(e.scoutTarget.x - e.x, e.scoutTarget.y - e.y) < 15) {
-                    e.scoutTarget = { x: 50 + Math.random() * (w - 100), y: 50 + Math.random() * (h - 100) };
+                    e.scoutTarget = { x: 50 + Math.random() * (canvas.width - 100), y: 50 + Math.random() * (canvas.height - 100) };
                 }
                 let dist = Math.hypot(e.scoutTarget.x - e.x, e.scoutTarget.y - e.y);
                 e.state = isDesperate ? "Panic Searching!" : "Scouting / Wandering";
                 e.x += ((e.scoutTarget.x - e.x) / dist) * simSpeed * speedMult;
                 e.y += ((e.scoutTarget.y - e.y) / dist) * simSpeed * speedMult;
+            }
+        }
+        
+        // --- RESPAWN DEPLETED RESOURCES ---
+        for (let key in nodes) {
+            let n = nodes[key];
+            if (n.show && n.stock <= 0 && n.stock !== Infinity) {
+                // Relocate organically
+                n.x = 50 + Math.random() * (canvas.width - 100);
+                n.y = 50 + Math.random() * (canvas.height - 100);
+                n.stock = n.max;
+                
+                // Erase from memory (Fog of War)
+                if (tribeKnowledge[key]) tribeKnowledge[key].known = false;
+                entities.forEach(ent => {
+                    if (ent.memory[key]) ent.memory[key].known = false;
+                    if (ent.state.includes(n.name)) ent.state = "Resource vanished!"; // Interrupt
+                });
             }
         }
 
@@ -436,10 +450,6 @@
             if (n.stock !== Infinity) {
                 ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.font = '10px Arial';
                 ctx.fillText(`${Math.ceil(Math.max(0, n.stock))}/${n.max}`, n.x, n.y + 20);
-                if (n.stock <= 0) {
-                    ctx.fillStyle = '#ff6666'; ctx.font = 'bold 10px Arial';
-                    ctx.fillText('DEPLETED', n.x, n.y + 4);
-                }
             }
             if (n.locked && n.stock > 0) { ctx.fillStyle = 'red'; ctx.font = '20px Arial'; ctx.fillText('🔒', n.x, n.y + 8); }
         }
