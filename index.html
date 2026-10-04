@@ -3,19 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Autonomous Tribal Survival - Dynamic Ecosystem</title>
+    <title>Autonomous Tribal Survival - Reproduction & Meds Update</title>
     <style>
         body { margin: 0; padding: 0; background-color: #1a1a1a; color: white; font-family: sans-serif; overflow: hidden; user-select: none; }
         canvas { display: block; background-color: #2e4a27; }
         
-        #hud { position: absolute; top: 0; left: 0; width: 100%; background: rgba(0,0,0,0.85); padding: 10px; display: flex; justify-content: space-around; align-items: center; font-size: 13px; z-index: 10; border-bottom: 2px solid #444; }
-        .hud-item { font-weight: bold; }
+        #hud { position: absolute; top: 0; left: 0; width: 100%; background: rgba(0,0,0,0.85); padding: 10px; display: flex; justify-content: space-around; align-items: center; font-size: 13px; z-index: 10; border-bottom: 2px solid #444; flex-wrap: wrap;}
+        .hud-item { font-weight: bold; margin: 0 5px; }
         .clickable { cursor: pointer; color: #ff6666; text-decoration: underline; }
         #hud-goal { color: #f1c40f; background: #333; padding: 4px 8px; border-radius: 4px; border: 1px solid #f1c40f; }
         
         .panel { position: absolute; background: rgba(0,0,0,0.8); border: 1px solid #555; padding: 10px; border-radius: 5px; font-size: 12px; z-index: 5; max-height: 75vh; overflow-y: auto; }
         
-        #steward-panel { top: 50px; left: 10px; width: 180px; }
+        #steward-panel { top: 60px; left: 10px; width: 180px; }
         details summary { cursor: pointer; color: #f1c40f; font-weight: bold; font-size: 14px; margin-bottom: 10px; outline: none; list-style: none; }
         details summary::-webkit-details-marker { display: none; }
         .toggle-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid #333;}
@@ -32,12 +32,13 @@
 <body>
 
     <div id="hud">
-        <span class="hud-item" id="hud-wood">Wood: 5/100</span>
-        <span class="hud-item" id="hud-food">Food: 5/100</span>
-        <span class="hud-item" id="hud-water">Water: 5/100</span>
-        <span class="hud-item" id="hud-pop">Pop: 4 (Beds: 2)</span>
-        <span class="hud-item clickable" onclick="toggleModal()">☠️ Dead: 0</span>
-        <span class="hud-item" id="hud-goal">AI Goal: Survive</span>
+        <span class="hud-item" id="hud-wood">🪵 5/100</span>
+        <span class="hud-item" id="hud-food">🍖 5/100</span>
+        <span class="hud-item" id="hud-water">💧 5/100</span>
+        <span class="hud-item" id="hud-meds" style="color: #2ecc71;">🌿 0/100</span>
+        <span class="hud-item" id="hud-pop">👥 4 (🛏️ 2)</span>
+        <span class="hud-item clickable" onclick="toggleModal()">☠️ 0</span>
+        <span class="hud-item" id="hud-goal">AI: Survive</span>
         <span class="hud-item" id="hud-day">Day: 0</span>
     </div>
 
@@ -76,12 +77,14 @@
     const TWO_YEARS = 730;
     const VISION_RADIUS = 180; 
     
-    let storage = { wood: 5, food: 5, water: 5 };
-    let caps = { wood: 100, food: 100, water: 100 };
+    // NEW: Added Meds to storage
+    let storage = { wood: 5, food: 5, water: 5, meds: 0 };
+    let caps = { wood: 100, food: 100, water: 100, meds: 100 };
     let deceased = [];
     let entityCounter = 5;
     
-    let bldgs = { camp: { level: 0, cap: 2 }, foodDepot: { level: -1 }, woodDepot: { level: -1 }, waterDepot: { level: -1 } };
+    // NEW: Added medsDepot
+    let bldgs = { camp: { level: 0, cap: 2 }, foodDepot: { level: -1 }, woodDepot: { level: -1 }, waterDepot: { level: -1 }, medsDepot: { level: -1 } };
 
     const costs = {
         camp0: { w: 80, f: 25, wt: 80, name: "Build New Camp", type: 'camp', targetLevel: 0 },
@@ -96,6 +99,10 @@
         water0: { w: 30, f: 15, wt: 40, name: "Build Water Depot", type: 'waterDepot', targetLevel: 0, newCap: 150 },
         water1: { w: 50, f: 55, wt: 90, name: "Upgrade Water Depot L1", type: 'waterDepot', targetLevel: 1, newCap: 300 },
         water2: { w: 80, f: 55, wt: 120, name: "Upgrade Water Depot L2", type: 'waterDepot', targetLevel: 2, newCap: 600 },
+        // NEW: Meds costs
+        med0: { w: 30, f: 10, wt: 10, name: "Build Meds Depot", type: 'medsDepot', targetLevel: 0, newCap: 120 },
+        med1: { w: 50, f: 20, wt: 20, name: "Upgrade Meds L1", type: 'medsDepot', targetLevel: 1, newCap: 250 },
+        med2: { w: 80, f: 30, wt: 30, name: "Upgrade Meds L2", type: 'medsDepot', targetLevel: 2, newCap: 500 }
     };
 
     let activeGoal = null;
@@ -189,6 +196,11 @@
             if (bldgs.waterDepot.level === 0) return costs.water1;
             if (bldgs.waterDepot.level === 1) return costs.water2;
         }
+        if (storage.meds > caps.meds * 0.8) {
+            if (bldgs.medsDepot.level === -1) return costs.med0;
+            if (bldgs.medsDepot.level === 0) return costs.med1;
+            if (bldgs.medsDepot.level === 1) return costs.med2;
+        }
         return null; 
     }
 
@@ -201,6 +213,7 @@
         } else if (goal.type === 'foodDepot') { bldgs.foodDepot.level = goal.targetLevel; caps.food = goal.newCap; }
         else if (goal.type === 'woodDepot') { bldgs.woodDepot.level = goal.targetLevel; caps.wood = goal.newCap; }
         else if (goal.type === 'waterDepot') { bldgs.waterDepot.level = goal.targetLevel; caps.water = goal.newCap; }
+        else if (goal.type === 'medsDepot') { bldgs.medsDepot.level = goal.targetLevel; caps.meds = goal.newCap; }
     }
 
     function processAI(dt) {
@@ -208,7 +221,7 @@
         timeDay += dayInc;
 
         activeGoal = determineColonyGoal();
-        document.getElementById('hud-goal').innerText = activeGoal ? `AI Goal: ${activeGoal.name}` : `AI Goal: Survive & Stockpile`;
+        document.getElementById('hud-goal').innerText = activeGoal ? `AI Goal: ${activeGoal.name.slice(0,10)}..` : `AI: Survive & Stockpile`;
 
         entities.forEach(e => {
             if (!e.partnerId && e.hp > 60) {
@@ -226,6 +239,9 @@
             let unsheltered = entities.filter(e => !e.hasBed);
             if (unsheltered.length > 0) unsheltered[0].hasBed = true;
         }
+
+        // REPRODUCTION LOGIC FIX: Check if it's mating time
+        let isMatingTime = (entities.length < bldgs.camp.cap && storage.food >= 30);
 
         for (let i = entities.length - 1; i >= 0; i--) {
             let e = entities[i];
@@ -254,7 +270,12 @@
             let speedMult = (e.stam <= 0) ? 0.5 : 1.0;
             let isDesperate = false;
 
-            if (e.wat < 30) { 
+            // NEW: Use Camp Storage for Meds!
+            if (e.hp < 50) { 
+                targetNode = (storage.meds > 0) ? nodes.camp : (getClosestKnown(['med'], e) || nodes.camp); 
+                isDesperate = true; e.state = "Critical HP!"; speedMult = 1.5; 
+            }
+            else if (e.wat < 30) { 
                 targetNode = (storage.water > 0) ? nodes.camp : getClosestKnown(['water'], e); 
                 isDesperate = true; e.state = "Dying of Thirst!"; speedMult = 2.0; 
             }
@@ -262,19 +283,22 @@
                 targetNode = (storage.food > 0) ? nodes.camp : (e.hp < 50 ? getClosestKnown(['food'], e) : getClosestKnown(['food', 'hunt'], e)); 
                 isDesperate = true; e.state = "Starving!"; speedMult = 2.0; 
             }
-            else if (e.hp < 40) { 
-                targetNode = getClosestKnown(['med'], e) || nodes.camp; 
-                isDesperate = true; e.state = "Critical HP!"; 
-            }
             else if (!e.hasBed && e.daysUnsheltered > (TWO_YEARS - 30)) {
                 targetNode = nodes.camp; 
                 isDesperate = true; e.state = "Exposure Imminent!";
             }
             
             if (!isDesperate) {
-                if (e.hp < 80) { targetNode = getClosestKnown(['med'], e); if(!targetNode) targetNode = nodes.camp; }
+                if (e.hp < 80) { targetNode = (storage.meds > 0) ? nodes.camp : (getClosestKnown(['med'], e) || nodes.camp); }
                 else if (e.wat < 50) { targetNode = (storage.water > 10) ? nodes.camp : getClosestKnown(['water'], e); }
                 else if (e.food < 50) { targetNode = (storage.food > 10) ? nodes.camp : getClosestKnown(['food', 'hunt'], e); }
+                
+                // REPRODUCTION SYNC: Forces bonded partners to go home to mate!
+                else if (isMatingTime && e.partnerId && e.hp > 75) {
+                    targetNode = nodes.camp;
+                    e.state = "Courting 💞";
+                }
+                
                 else if (e.stam < 25) targetNode = nodes.camp;
                 else if (activeGoal) {
                     if (storage.wood < activeGoal.w) targetNode = getClosestKnown(['wood'], e);
@@ -284,7 +308,7 @@
                         targetNode = nodes.camp; 
                         if (Math.hypot(nodes.camp.x - e.x, nodes.camp.y - e.y) < 15 && e.stam > 10) {
                             constructGoal(activeGoal);
-                            e.state = "Constructed " + activeGoal.name + "!";
+                            e.state = "Constructed!";
                             activeGoal = null;
                         }
                     }
@@ -292,6 +316,7 @@
                     if (storage.water < caps.water * 0.5) targetNode = getClosestKnown(['water'], e);
                     else if (storage.food < caps.food * 0.5) targetNode = getClosestKnown(['food', 'hunt'], e);
                     else if (storage.wood < caps.wood * 0.5) targetNode = getClosestKnown(['wood'], e);
+                    else if (storage.meds < caps.meds * 0.5) targetNode = getClosestKnown(['med'], e); // GATHER MEDS
                     if (!targetNode) targetNode = nodes.camp; 
                 }
             }
@@ -299,7 +324,7 @@
             if (targetNode) {
                 let dist = Math.hypot(targetNode.x - e.x, targetNode.y - e.y);
                 if (dist > 15) {
-                    e.state = `Going to ${targetNode.name}`;
+                    if (!e.state.includes("Courting")) e.state = `Going to ${targetNode.name}`;
                     e.x += ((targetNode.x - e.x) / dist) * simSpeed * speedMult;
                     e.y += ((targetNode.y - e.y) / dist) * simSpeed * speedMult;
                 } else {
@@ -336,15 +361,16 @@
                         e.state = "Chopping Wood";
                     } else if (targetNode.type === 'med' && gatherAmt > 0) {
                         e.hp = Math.min(100, e.hp + gatherAmt * 0.5);
+                        storage.meds = Math.min(caps.meds, storage.meds + gatherAmt); // STORE MEDS
                         if (targetNode.stock !== Infinity) targetNode.stock -= gatherAmt;
-                        e.state = "Healing";
+                        e.state = "Gathering Herbs";
                     } else if (targetNode.type === 'tox' && gatherAmt > 0) {
                         e.hp -= (2 * simSpeed * dt);
                         if (targetNode.stock !== Infinity) targetNode.stock -= gatherAmt;
                         e.state = "Poisoned!";
                     } else if (targetNode.type === 'camp') {
                         e.stam = Math.min(100, e.stam + 0.5 * simSpeed * dt);
-                        e.state = "Resting at Camp";
+                        if (!e.state.includes("Courting")) e.state = "Resting at Camp";
                         
                         if (e.wat < 100 && storage.water > 0) {
                             let drink = Math.min(100 - e.wat, storage.water, 2 * simSpeed * dt);
@@ -355,6 +381,12 @@
                             let eat = Math.min(100 - e.food, storage.food, 2 * simSpeed * dt);
                             e.food += eat; storage.food -= eat;
                             e.state = "Eating from Storage";
+                        }
+                        // HEALING FROM STORAGE
+                        if (e.hp < 100 && storage.meds > 0) {
+                            let heal = Math.min(100 - e.hp, storage.meds, 3 * simSpeed * dt);
+                            e.hp += heal; storage.meds -= heal;
+                            e.state = "Healing from Storage";
                         }
                         
                         for (let key in e.memory) {
@@ -392,28 +424,26 @@
             }
         }
         
-        // --- RESPAWN DEPLETED RESOURCES ---
         for (let key in nodes) {
             let n = nodes[key];
             if (n.show && n.stock <= 0 && n.stock !== Infinity) {
-                // Relocate organically
                 n.x = 50 + Math.random() * (canvas.width - 100);
                 n.y = 50 + Math.random() * (canvas.height - 100);
                 n.stock = n.max;
                 
-                // Erase from memory (Fog of War)
                 if (tribeKnowledge[key]) tribeKnowledge[key].known = false;
                 entities.forEach(ent => {
                     if (ent.memory[key]) ent.memory[key].known = false;
-                    if (ent.state.includes(n.name)) ent.state = "Resource vanished!"; // Interrupt
+                    if (ent.state.includes(n.name)) ent.state = "Resource vanished!";
                 });
             }
         }
 
-        if (simSpeed > 0 && Math.random() < 0.01 * simSpeed && entities.length < bldgs.camp.cap && storage.food >= 25) {
-            let m = entities.find(e => e.sex === 'M' && e.hp >= 75 && e.state === "Resting at Camp" && e.partnerId);
+        // ACTUAL MATING EVENT!
+        if (simSpeed > 0 && Math.random() < 0.05 * simSpeed && entities.length < bldgs.camp.cap && storage.food >= 25) {
+            let m = entities.find(e => e.sex === 'M' && e.hp >= 75 && e.partnerId && Math.hypot(e.x - nodes.camp.x, e.y - nodes.camp.y) < 20);
             if (m) {
-                let f = entities.find(e => e.id === m.partnerId && e.hp >= 75 && e.state === "Resting at Camp");
+                let f = entities.find(e => e.id === m.partnerId && e.hp >= 75 && Math.hypot(e.x - nodes.camp.x, e.y - nodes.camp.y) < 20);
                 if (f) {
                     let isM = Math.random() > 0.5;
                     entities.push({
@@ -422,7 +452,7 @@
                         daysUnsheltered: 0, hasBed: true, partnerId: null, state: 'Just Born!', color: isM?'#3498db':'#fd79a8',
                         memory: JSON.parse(JSON.stringify(tribeKnowledge)), scoutTarget: null
                     });
-                    storage.food -= 10;
+                    storage.food -= 15; // Child consumes colony food to grow
                 }
             }
         }
@@ -473,12 +503,13 @@
             if (!e.hasBed) { ctx.fillStyle = 'orange'; ctx.font = '10px Arial'; ctx.fillText(`Unsheltered: ${Math.floor(e.daysUnsheltered)}d`, e.x, e.y + 25); }
         });
 
-        document.getElementById('hud-wood').innerText = `Wood: ${Math.floor(storage.wood)}/${caps.wood}`;
-        document.getElementById('hud-food').innerText = `Food: ${Math.floor(storage.food)}/${caps.food}`;
-        document.getElementById('hud-water').innerText = `Water: ${Math.floor(storage.water)}/${caps.water}`;
-        document.getElementById('hud-pop').innerText = `Pop: ${entities.length} (Beds: ${bldgs.camp.cap})`;
+        document.getElementById('hud-wood').innerText = `🪵 ${Math.floor(storage.wood)}/${caps.wood}`;
+        document.getElementById('hud-food').innerText = `🍖 ${Math.floor(storage.food)}/${caps.food}`;
+        document.getElementById('hud-water').innerText = `💧 ${Math.floor(storage.water)}/${caps.water}`;
+        document.getElementById('hud-meds').innerText = `🌿 ${Math.floor(storage.meds)}/${caps.meds}`;
+        document.getElementById('hud-pop').innerText = `👥 ${entities.length} (🛏️ ${bldgs.camp.cap})`;
         document.getElementById('hud-day').innerText = `Day: ${Math.floor(timeDay)}`;
-        document.querySelector('.clickable').innerText = `☠️ Dead: ${deceased.length}`;
+        document.querySelector('.clickable').innerText = `☠️ ${deceased.length}`;
 
         requestAnimationFrame(loop);
     }
