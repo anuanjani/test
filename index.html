@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Autonomous Tribal Survival - True AI Build</title>
+    <title>Autonomous Tribal Survival - Finite Resources</title>
     <style>
         body { margin: 0; padding: 0; background-color: #1a1a1a; color: white; font-family: sans-serif; overflow: hidden; user-select: none; }
         canvas { display: block; background-color: #2e4a27; }
@@ -15,17 +15,18 @@
         #hud-goal { color: #f1c40f; background: #333; padding: 4px 8px; border-radius: 4px; border: 1px solid #f1c40f; }
         
         /* Panels */
-        .panel { position: absolute; background: rgba(0,0,0,0.8); border: 1px solid #555; padding: 10px; border-radius: 5px; font-size: 12px; z-index: 5; max-height: 80vh; overflow-y: auto; }
+        .panel { position: absolute; background: rgba(0,0,0,0.8); border: 1px solid #555; padding: 10px; border-radius: 5px; font-size: 12px; z-index: 5; max-height: 75vh; overflow-y: auto; }
         
         /* Steward Controls (Left) */
-        #steward-panel { top: 50px; left: 10px; width: 160px; }
+        #steward-panel { top: 50px; left: 10px; width: 180px; }
         #steward-panel h3 { margin: 0 0 10px 0; font-size: 14px; color: #f1c40f; }
-        .toggle-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+        .toggle-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid #333;}
         
         /* Speed Controls (Bottom) */
-        #speed-panel { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; z-index: 5; }
-        .speed-btn { padding: 10px 20px; background: #444; color: white; border: 2px solid #222; border-radius: 5px; font-weight: bold; cursor: pointer; }
+        #speed-panel { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; z-index: 5; }
+        .speed-btn { padding: 10px 15px; background: #444; color: white; border: 2px solid #222; border-radius: 5px; font-weight: bold; cursor: pointer; }
         .speed-btn.active { border-color: #2ecc71; background: #27ae60; }
+        #spd0.active { border-color: #e74c3c; background: #c0392b; }
         
         /* Mortuary Modal */
         #log-modal { display: none; position: absolute; top: 20%; left: 50%; transform: translateX(-50%); width: 300px; background: #222; border: 2px solid #e74c3c; padding: 15px; z-index: 20; border-radius: 8px; max-height: 50vh; overflow-y: auto; }
@@ -53,6 +54,7 @@
 
     <!-- Speed Controls -->
     <div id="speed-panel">
+        <button class="speed-btn" id="spd0" onclick="setSpeed(0)">Pause</button>
         <button class="speed-btn active" id="spd1" onclick="setSpeed(1)">1x</button>
         <button class="speed-btn" id="spd5" onclick="setSpeed(5)">5x</button>
         <button class="speed-btn" id="spd10" onclick="setSpeed(10)">10x</button>
@@ -114,19 +116,32 @@
 
     let activeGoal = null;
 
-    // --- MAP NODES ---
+    // --- MAP NODES (Multi-location & Finite Stock) ---
     const w = canvas.width;
     const h = canvas.height;
+    
+    // Infinity marks infinite resources (like a major river or the camp). All others deplete.
     const nodes = {
-        river: { x: w*0.15, y: h*0.15, name: 'River', type: 'water', color: '#3498db', locked: false, show: true },
-        pond: { x: w*0.85, y: h*0.85, name: 'Distant Pond', type: 'water', color: '#2980b9', locked: false, show: true },
-        well: { x: w*0.45, y: h*0.55, name: 'Ground Water (Well)', type: 'water', color: '#00cec9', locked: false, show: false },
-        forest: { x: w*0.8, y: h*0.2, name: 'Forest', type: 'wood', color: '#27ae60', locked: false, show: true },
-        berries: { x: w*0.2, y: h*0.8, name: 'Berries', type: 'food', color: '#e74c3c', locked: false, show: true },
-        boars: { x: w*0.8, y: h*0.5, name: 'Wild Boars (Hunt)', type: 'hunt', color: '#d35400', locked: false, show: true },
-        med_herbs: { x: w*0.2, y: h*0.45, name: 'Medicinal Herbs', type: 'med', color: '#2ecc71', locked: false, show: true },
-        tox_herbs: { x: w*0.5, y: h*0.8, name: 'Toxic Herbs', type: 'tox', color: '#9b59b6', locked: false, show: true },
-        camp: { x: w*0.5, y: h*0.5, name: 'Camp', type: 'camp', color: '#8e44ad', locked: false, show: true }
+        river: { x: w*0.1, y: h*0.15, name: 'River (Infinite)', type: 'water', color: '#3498db', locked: false, show: true, stock: Infinity, max: Infinity },
+        pond1: { x: w*0.85, y: h*0.85, name: 'Distant Pond', type: 'water', color: '#2980b9', locked: false, show: true, stock: 1500, max: 1500 },
+        pond2: { x: w*0.35, y: h*0.7, name: 'Small Pond', type: 'water', color: '#2980b9', locked: false, show: true, stock: 800, max: 800 },
+        well: { x: w*0.45, y: h*0.55, name: 'Ground Water (Well)', type: 'water', color: '#00cec9', locked: false, show: false, stock: Infinity, max: Infinity },
+        
+        forest1: { x: w*0.8, y: h*0.2, name: 'Deep Forest', type: 'wood', color: '#27ae60', locked: false, show: true, stock: 3000, max: 3000 },
+        forest2: { x: w*0.2, y: h*0.3, name: 'Sparse Woods', type: 'wood', color: '#2ecc71', locked: false, show: true, stock: 1000, max: 1000 },
+        
+        berries1: { x: w*0.2, y: h*0.8, name: 'Berry Grove 1', type: 'food', color: '#e74c3c', locked: false, show: true, stock: 1200, max: 1200 },
+        berries2: { x: w*0.7, y: h*0.7, name: 'Berry Grove 2', type: 'food', color: '#e74c3c', locked: false, show: true, stock: 800, max: 800 },
+        
+        boars1: { x: w*0.8, y: h*0.5, name: 'Boar Pack 1', type: 'hunt', color: '#d35400', locked: false, show: true, stock: 1500, max: 1500 },
+        boars2: { x: w*0.4, y: h*0.2, name: 'Boar Pack 2', type: 'hunt', color: '#d35400', locked: false, show: true, stock: 1000, max: 1000 },
+        
+        med_herbs1: { x: w*0.3, y: h*0.45, name: 'Medicinal Herbs', type: 'med', color: '#1abc9c', locked: false, show: true, stock: 500, max: 500 },
+        
+        tox_herbs1: { x: w*0.5, y: h*0.8, name: 'Toxic Herbs 1', type: 'tox', color: '#9b59b6', locked: false, show: true, stock: 300, max: 300 },
+        tox_herbs2: { x: w*0.65, y: h*0.3, name: 'Toxic Herbs 2', type: 'tox', color: '#8e44ad', locked: false, show: true, stock: 300, max: 300 },
+        
+        camp: { x: w*0.5, y: h*0.5, name: 'Camp', type: 'camp', color: '#f39c12', locked: false, show: true, stock: Infinity, max: Infinity }
     };
 
     let groundwaterResearch = 0;
@@ -142,7 +157,7 @@
     function setupUI() {
         let locksHtml = '';
         for (let key in nodes) {
-            if (key === 'camp') continue;
+            if (key === 'camp' || key === 'well') continue; // Hidden/un-lockables
             locksHtml += `
                 <div class="toggle-row">
                     <label>${nodes[key].name}</label>
@@ -158,11 +173,14 @@
         let m = document.getElementById('log-modal');
         m.style.display = m.style.display === 'block' ? 'none' : 'block';
     }
+    
+    // Updated setSpeed to handle PAUSE (0)
     function setSpeed(s) {
         simSpeed = s;
         document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
         document.getElementById('spd'+s).classList.add('active');
     }
+    
     function logDeath(entity, cause) {
         deceased.push(`Day ${Math.floor(timeDay)}: ${entity.id} (${entity.sex}) - ${cause}`);
         document.getElementById('dead-list').innerHTML += `<li>${deceased[deceased.length-1]}</li>`;
@@ -173,7 +191,8 @@
         let best = null, minDist = Infinity;
         for (let key in nodes) {
             let n = nodes[key];
-            if (n.show && !n.locked && typeArray.includes(n.type)) {
+            // Only consider nodes that are showing, unlocked, match the type, AND have > 0 stock!
+            if (n.show && !n.locked && typeArray.includes(n.type) && n.stock > 0) {
                 let dist = Math.hypot(n.x - entity.x, n.y - entity.y);
                 if (dist < minDist) { minDist = dist; best = n; }
             }
@@ -182,13 +201,11 @@
     }
 
     function determineColonyGoal() {
-        // 1. Shelter is critical
         if (entities.length > bldgs.camp.cap) {
             if (bldgs.camp.level === 0) return costs.camp1;
             if (bldgs.camp.level === 1) return costs.camp2;
             if (bldgs.camp.level === 2) return costs.camp0; 
         }
-        // 2. Storage Expansion
         if (storage.food > caps.food * 0.8) {
             if (bldgs.foodDepot.level === -1) return costs.food0;
             if (bldgs.foodDepot.level === 0) return costs.food1;
@@ -204,7 +221,7 @@
             if (bldgs.waterDepot.level === 0) return costs.water1;
             if (bldgs.waterDepot.level === 1) return costs.water2;
         }
-        return null; // No urgent goals
+        return null; 
     }
 
     function constructGoal(goal) {
@@ -222,25 +239,26 @@
     }
 
     function processAI(dt) {
+        // If paused, simSpeed is 0, meaning dt * 0 = 0. Nothing updates!
         let dayInc = (dt * simSpeed) / 100;
         timeDay += dayInc;
 
         activeGoal = determineColonyGoal();
         document.getElementById('hud-goal').innerText = activeGoal ? `AI Goal: ${activeGoal.name}` : `AI Goal: Survive & Stockpile`;
 
-        // Partner Selection (Bonding)
+        // Partner Selection
         entities.forEach(e => {
             if (!e.partnerId && e.hp > 60) {
                 let candidates = entities.filter(o => o.sex !== e.sex && !o.partnerId && o.hp > 60);
                 if (candidates.length > 0) {
-                    candidates.sort((a,b) => b.hp - a.hp); // pick strongest
+                    candidates.sort((a,b) => b.hp - a.hp); 
                     e.partnerId = candidates[0].id;
                     candidates[0].partnerId = e.id;
                 }
             }
         });
 
-        // Ensure Bed Count is accurate (if capacity dropped or entity died)
+        // Ensure Bed Count
         let shelteredCount = entities.filter(e => e.hasBed).length;
         if (shelteredCount < bldgs.camp.cap) {
             let unsheltered = entities.filter(e => !e.hasBed);
@@ -250,7 +268,7 @@
         for (let i = entities.length - 1; i >= 0; i--) {
             let e = entities[i];
             
-            // Vitals Decay
+            // Vitals Decay (stops when paused because simSpeed = 0)
             e.wat -= (0.08 * simSpeed * dt);
             e.food -= (0.05 * simSpeed * dt);
             e.stam -= (0.03 * simSpeed * dt);
@@ -273,12 +291,11 @@
             else if (e.food < 30) targetNode = getClosestUnlocked(['food', 'hunt'], e);
             else if (e.stam < 20) targetNode = nodes.camp;
             else if (activeGoal) {
-                // Fetch missing materials for the active goal
                 if (storage.wood < activeGoal.w) targetNode = getClosestUnlocked(['wood'], e);
                 else if (storage.water < activeGoal.wt) targetNode = getClosestUnlocked(['water'], e);
                 else if (storage.food < activeGoal.f) targetNode = getClosestUnlocked(['food', 'hunt'], e);
                 else {
-                    targetNode = nodes.camp; // We have enough, return to construct!
+                    targetNode = nodes.camp; 
                     if (Math.hypot(nodes.camp.x - e.x, nodes.camp.y - e.y) < 15 && e.stam > 10) {
                         constructGoal(activeGoal);
                         e.state = "Constructed " + activeGoal.name + "!";
@@ -286,11 +303,11 @@
                     }
                 }
             } else {
-                // Idle stockpiling
                 if (storage.water < caps.water * 0.5) targetNode = getClosestUnlocked(['water'], e);
                 else if (storage.food < caps.food * 0.5) targetNode = getClosestUnlocked(['food', 'hunt'], e);
                 else if (storage.wood < caps.wood * 0.5) targetNode = getClosestUnlocked(['wood'], e);
-                else targetNode = nodes.camp; 
+                
+                if (!targetNode) targetNode = nodes.camp; // Fallback if everything is depleted!
             }
 
             // Movement & Interaction
@@ -301,45 +318,65 @@
                     e.x += ((targetNode.x - e.x) / dist) * simSpeed * speedMult;
                     e.y += ((targetNode.y - e.y) / dist) * simSpeed * speedMult;
                 } else {
-                    if (targetNode.type === 'water') {
-                        e.wat = Math.min(100, e.wat + 1 * simSpeed);
-                        if (e.wat >= 100) storage.water = Math.min(caps.water, storage.water + 5);
+                    
+                    // Base amount gathered per frame (scaled by speed)
+                    let gatherAmt = 2 * simSpeed * dt;
+                    if (targetNode.stock !== Infinity) gatherAmt = Math.min(gatherAmt, targetNode.stock); // Can't gather more than exists
+                    
+                    if (targetNode.type === 'water' && gatherAmt > 0) {
+                        e.wat = Math.min(100, e.wat + gatherAmt);
+                        if (e.wat >= 100) storage.water = Math.min(caps.water, storage.water + gatherAmt);
+                        if (targetNode.stock !== Infinity) targetNode.stock -= gatherAmt;
                         e.state = "Drinking (Must hit 100%)";
-                        if (targetNode === nodes.pond) {
-                            groundwaterResearch += 0.05 * simSpeed;
-                            if (groundwaterResearch >= 100 && !nodes.well.show) nodes.well.show = true;
+                        
+                        if (targetNode === nodes.pond1 || targetNode === nodes.pond2) {
+                            groundwaterResearch += 0.05 * simSpeed * dt;
+                            if (groundwaterResearch >= 100 && !nodes.well.show) {
+                                nodes.well.show = true;
+                                // Automatically add Well to the Steward Panel once discovered
+                                document.getElementById('locks-container').innerHTML += `
+                                <div class="toggle-row">
+                                    <label>Ground Water (Well)</label>
+                                    <input type="checkbox" onchange="toggleLock('well', this.checked)">
+                                </div>`;
+                            }
                         }
-                    } else if (targetNode.type === 'food') {
-                        e.food = Math.min(100, e.food + 1 * simSpeed);
-                        storage.food = Math.min(caps.food, storage.food + 0.1 * simSpeed);
+                    } else if (targetNode.type === 'food' && gatherAmt > 0) {
+                        e.food = Math.min(100, e.food + gatherAmt);
+                        storage.food = Math.min(caps.food, storage.food + gatherAmt * 0.5);
+                        if (targetNode.stock !== Infinity) targetNode.stock -= gatherAmt;
                         e.state = "Gathering Berries";
-                    } else if (targetNode.type === 'hunt') {
-                        e.food = Math.min(100, e.food + 2 * simSpeed);
-                        storage.food = Math.min(caps.food, storage.food + 0.2 * simSpeed);
-                        e.hp -= (0.5 * simSpeed);
+                    } else if (targetNode.type === 'hunt' && gatherAmt > 0) {
+                        e.food = Math.min(100, e.food + gatherAmt * 1.5);
+                        storage.food = Math.min(caps.food, storage.food + gatherAmt);
+                        e.hp -= (0.5 * simSpeed * dt);
+                        if (targetNode.stock !== Infinity) targetNode.stock -= gatherAmt;
                         e.state = "Hunting (-HP Risk)";
-                    } else if (targetNode.type === 'wood') {
-                        storage.wood = Math.min(caps.wood, storage.wood + 0.1 * simSpeed);
+                    } else if (targetNode.type === 'wood' && gatherAmt > 0) {
+                        storage.wood = Math.min(caps.wood, storage.wood + gatherAmt);
+                        e.stam -= (0.1 * simSpeed * dt);
+                        if (targetNode.stock !== Infinity) targetNode.stock -= gatherAmt;
                         e.state = "Chopping Wood";
-                        e.stam -= (0.1 * simSpeed);
-                    } else if (targetNode.type === 'med') {
-                        e.hp = Math.min(100, e.hp + 0.5 * simSpeed);
+                    } else if (targetNode.type === 'med' && gatherAmt > 0) {
+                        e.hp = Math.min(100, e.hp + gatherAmt * 0.5);
+                        if (targetNode.stock !== Infinity) targetNode.stock -= gatherAmt;
                         e.state = "Healing";
-                    } else if (targetNode.type === 'tox') {
-                        e.hp -= 2 * simSpeed;
+                    } else if (targetNode.type === 'tox' && gatherAmt > 0) {
+                        e.hp -= (2 * simSpeed * dt);
+                        if (targetNode.stock !== Infinity) targetNode.stock -= gatherAmt;
                         e.state = "Eating Bad Herb!";
                     } else if (targetNode.type === 'camp') {
-                        e.stam = Math.min(100, e.stam + 0.5 * simSpeed);
+                        e.stam = Math.min(100, e.stam + 0.5 * simSpeed * dt);
                         e.state = "Resting at Camp";
                         
                         // Fight for bed logic!
-                        if (!e.hasBed && entities.length > bldgs.camp.cap) {
+                        if (!e.hasBed && entities.length > bldgs.camp.cap && simSpeed > 0) {
                             let sheltered = entities.filter(o => o.hasBed);
                             if (sheltered.length > 0) {
-                                sheltered.sort((a,b) => a.hp - b.hp); // Find weakest sheltered
+                                sheltered.sort((a,b) => a.hp - b.hp); 
                                 let weak = sheltered[0];
-                                if (e.hp > weak.hp + 10) { // If clearly stronger, attack!
-                                    e.hp -= 15; // Cost of fighting
+                                if (e.hp > weak.hp + 10) { 
+                                    e.hp -= 15; 
                                     weak.hp -= 25;
                                     e.hasBed = true;
                                     weak.hasBed = false;
@@ -353,8 +390,8 @@
             }
         }
 
-        // Reproduction (Requires bonded partner)
-        if (Math.random() < 0.01 * simSpeed && entities.length < bldgs.camp.cap && storage.food >= 25) {
+        // Reproduction Check
+        if (simSpeed > 0 && Math.random() < 0.01 * simSpeed && entities.length < bldgs.camp.cap && storage.food >= 25) {
             let m = entities.find(e => e.sex === 'M' && e.hp >= 75 && e.state === "Resting at Camp" && e.partnerId);
             if (m) {
                 let f = entities.find(e => e.id === m.partnerId && e.hp >= 75 && e.state === "Resting at Camp");
@@ -374,7 +411,9 @@
     // --- RENDER LOOP ---
     let lastTime = performance.now();
     function loop(now) {
+        // Ensure smooth dt even after pausing
         let dt = (now - lastTime) / 16;
+        if (dt > 10) dt = 1; // Prevent massive jumps if tab is inactive
         lastTime = now;
         
         processAI(dt);
@@ -385,13 +424,27 @@
             let n = nodes[key];
             if (!n.show) continue;
             
-            ctx.fillStyle = n.color;
+            // Draw node circle
+            ctx.fillStyle = (n.stock <= 0) ? 'rgba(0,0,0,0.5)' : n.color;
             ctx.beginPath(); ctx.arc(n.x, n.y, 25, 0, Math.PI*2); ctx.fill();
             
+            // Node Name
             ctx.fillStyle = 'white'; ctx.font = '12px Arial'; ctx.textAlign = 'center';
             ctx.fillText(n.name, n.x, n.y - 30);
             
-            if (n.locked) {
+            // Display remaining stock below the node
+            if (n.stock !== Infinity) {
+                ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.font = '10px Arial';
+                ctx.fillText(`${Math.ceil(Math.max(0, n.stock))}/${n.max}`, n.x, n.y + 20);
+                
+                // Show depleted tag
+                if (n.stock <= 0) {
+                    ctx.fillStyle = '#ff6666'; ctx.font = 'bold 10px Arial';
+                    ctx.fillText('DEPLETED', n.x, n.y + 4);
+                }
+            }
+            
+            if (n.locked && n.stock > 0) {
                 ctx.fillStyle = 'red'; ctx.font = '20px Arial';
                 ctx.fillText('🔒', n.x, n.y + 8);
             }
