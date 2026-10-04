@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Autonomous Tribal Survival - The Oasis v13</title>
+    <title>Autonomous Tribal Survival - Night Cycle v14</title>
     <style>
         body { margin: 0; padding: 0; background-color: #1a1a1a; color: white; font-family: sans-serif; overflow: hidden; user-select: none; }
         canvas { display: block; background-color: #2e4a27; }
@@ -42,7 +42,7 @@
         <span class="hud-item" id="hud-pop">👥 4 (🛏️ 4)</span>
         <span class="hud-item clickable" onclick="toggleModal()">💀 0</span>
         <span class="hud-item" id="hud-goal">AI: Survive</span>
-        <span class="hud-item" id="hud-time">Year: 0, Day: 0</span>
+        <span class="hud-item" id="hud-time">Year: 0, Day: 0 ☀️</span>
     </div>
 
     <div id="steward-panel" class="panel">
@@ -88,23 +88,18 @@
     resize();
 
     let simSpeed = 1; let timeDay = 0; const TWO_YEARS = 730; const VISION_RADIUS = 250; 
+    let isNight = false;
     
-    // Base buffer 65 for all
     let storage = { wood: 20, stone: 20, food: 35, water: 35, meds: 0, tox: 0 };
     let caps = { wood: 65, stone: 65, food: 65, water: 65, meds: 65, tox: 65 };
     
     let deceased = []; let entityCounter = 5; let activePredators = [];
     
     let bldgs = { 
-        camps: 1, 
-        machineShop: { level: -1 }, 
-        foodDepot: { level: -1 }, 
-        woodDepot: { level: -1 }, 
-        medsDepot: { level: -1 }, 
-        stoneDepot: { level: -1 } 
+        camps: 1, machineShop: { level: -1 }, foodDepot: { level: -1 }, 
+        woodDepot: { level: -1 }, medsDepot: { level: -1 }, stoneDepot: { level: -1 } 
     };
 
-    // WATER DEPOT COMPLETELY REMOVED FROM COSTS
     const costs = {
         camp: { w: 30, st: 20, name: "Build Camp (+4 Beds)", type: 'camp' },
         shop: { w: 50, st: 50, name: "Build Machine Shop", type: 'machineShop' },
@@ -120,13 +115,11 @@
     let activeGoal = null;
     const w = canvas.width, h = canvas.height;
     
-    // NEW SPAWN LOGIC: Small Pond and Berries spawn near Camp. River pushed to edge.
     const nodes = {
         camp1: { x: w*0.5, y: h*0.5, name: 'Camp 1', type: 'camp', color: '#f39c12', locked: false, show: true, stock: Infinity, max: Infinity },
         pond2: { x: w*0.5 - 60, y: h*0.5 - 60, name: 'Small Pond', type: 'water', color: '#2980b9', locked: false, show: true, stock: 800, max: 800 },
         berries1: { x: w*0.5 + 60, y: h*0.5 + 60, name: 'Berry Grove', type: 'food', color: '#e74c3c', locked: false, show: true, stock: 1200, max: 1200 },
         
-        // Distant locations
         river: { x: w*0.1, y: h*0.15, name: 'River', type: 'water', color: '#3498db', locked: false, show: true, stock: Infinity, max: Infinity },
         pond1: { x: w*0.85, y: h*0.85, name: 'Distant Pond', type: 'water', color: '#2980b9', locked: false, show: true, stock: 1500, max: 1500 },
         well: { x: w*0.45, y: h*0.55, name: 'Ground Water (Well)', type: 'water', color: '#00cec9', locked: false, show: false, stock: Infinity, max: Infinity },
@@ -138,8 +131,6 @@
     };
 
     let groundwaterResearch = 0;
-    
-    // Update starting memory to match the new close nodes
     let baseMemory = { 
         camp1: { known: true, stock: Infinity, locked: false, lastSeenDay: 0 },
         pond2: { known: true, stock: 800, locked: false, lastSeenDay: 0 },
@@ -150,8 +141,8 @@
     let entities = [
         { id: 'M1', sex: 'M', x: w*0.5, y: h*0.5, hp: 100, stam: 100, wat: 100, food: 100, daysUnsheltered: 0, hasBed: true, partnerId: null, state: 'IDLE', task: null, color: '#3498db', memory: JSON.parse(JSON.stringify(baseMemory)), scoutTarget: null, hasWeapon: false, hasCart: false },
         { id: 'M2', sex: 'M', x: w*0.52, y: h*0.52, hp: 100, stam: 100, wat: 100, food: 100, daysUnsheltered: 0, hasBed: true, partnerId: null, state: 'IDLE', task: null, color: '#3498db', memory: JSON.parse(JSON.stringify(baseMemory)), scoutTarget: null, hasWeapon: false, hasCart: false },
-        { id: 'F1', sex: 'F', x: w*0.48, y: h*0.48, hp: 100, stam: 100, wat: 100, food: 100, daysUnsheltered: 0, hasBed: true, partnerId: null, state: 'IDLE', task: null, color: '#fd79a8', memory: JSON.parse(JSON.stringify(baseMemory)), scoutTarget: null, hasWeapon: false, hasCart: false },
-        { id: 'F2', sex: 'F', x: w*0.5, y: h*0.48, hp: 100, stam: 100, wat: 100, food: 100, daysUnsheltered: 0, hasBed: true, partnerId: null, state: 'IDLE', task: null, color: '#fd79a8', memory: JSON.parse(JSON.stringify(baseMemory)), scoutTarget: null, hasWeapon: false, hasCart: false }
+        { id: 'F1', sex: 'F', x: w*0.48, y: h*0.48, hp: 100, stam: 100, wat: 100, food: 100, daysUnsheltered: 0, hasBed: true, partnerId: null, state: 'IDLE', task: null, color: '#fd79a8', memory: JSON.parse(JSON.stringify(baseMemory)), scoutTarget: null, hasWeapon: false, hasCart: false, lastMatedDay: 0 },
+        { id: 'F2', sex: 'F', x: w*0.5, y: h*0.48, hp: 100, stam: 100, wat: 100, food: 100, daysUnsheltered: 0, hasBed: true, partnerId: null, state: 'IDLE', task: null, color: '#fd79a8', memory: JSON.parse(JSON.stringify(baseMemory)), scoutTarget: null, hasWeapon: false, hasCart: false, lastMatedDay: 0 }
     ];
 
     function setupUI() {
@@ -204,10 +195,12 @@
 
     function determineColonyGoal() {
         if (storage.food < 15) return { type: 'panic_food', name: "EMERGENCY: Fetch Food!" };
-        if (storage.water < 15) return { type: 'panic_water', name: "EMERGENCY: Fetch Water!" };
+        if (storage.water < 15 && storage.water !== Infinity) return { type: 'panic_water', name: "EMERGENCY: Fetch Water!" };
         
         let totalBeds = bldgs.camps * 4;
-        if (entities.length > totalBeds && storage.wood >= costs.camp.w && storage.stone >= costs.camp.st) return costs.camp;
+        
+        // BUG FIX: changed > to >= so they proactively expand before running out of beds
+        if (entities.length >= totalBeds && storage.wood >= costs.camp.w && storage.stone >= costs.camp.st) return costs.camp;
         
         if (storage.food >= caps.food * 0.8) {
             if (bldgs.foodDepot.level === -1) return costs.f0;
@@ -261,6 +254,10 @@
     function processAI(dt) {
         let dayInc = (dt * simSpeed) / 100;
         timeDay += dayInc;
+        
+        // NIGHT CYCLE CALCULATION: Last 25% of the decimal day is "Night"
+        let timeOfDay = timeDay % 1;
+        isNight = timeOfDay > 0.75;
 
         activeGoal = determineColonyGoal();
         
@@ -337,10 +334,16 @@
             if (e.hp < 40) e.task = 'heal';
             if (e.stam < 25) e.task = 'rest';
             
+            // NIGHT OVERRIDE: Everyone goes home to sleep at night (unless dying)
+            if (isNight && e.wat >= 30 && e.food >= 30 && e.hp >= 40) {
+                e.task = 'rest';
+            }
+            
             if (e.task === 'water' && e.wat >= 95) e.task = null;
             if (e.task === 'food' && e.food >= 95) e.task = null;
             if (e.task === 'heal' && e.hp >= 95) e.task = null;
-            if (e.task === 'rest' && e.stam >= 95) e.task = null;
+            // Wake up in the morning
+            if (e.task === 'rest' && e.stam >= 95 && !isNight) e.task = null;
 
             let targetNode = null;
             let speedMult = (e.stam <= 0) ? 0.5 : (e.hasCart ? 1.4 : 1.0); 
@@ -356,7 +359,7 @@
                 } 
                 else if (activePredators.length > 0 && !e.hasWeapon) {
                     if (storage.wood >= 10 && storage.stone >= 10 && storage.tox >= 5) {
-                        targetNode = getClosestKnown(['machineShop'], e); e.state = "Going to craft Spear 🗡️";
+                        targetNode = getClosestKnown(['machineShop'], e); e.state = "Going to craft Spear 🗡️️";
                         if (targetNode && Math.hypot(targetNode.x - e.x, targetNode.y - e.y) < 15) {
                             storage.wood -= 10; storage.stone -= 10; storage.tox -= 5; e.hasWeapon = true; targetNode = null; e.task = 'rest';
                         }
@@ -375,14 +378,13 @@
                     targetNode = (storage.meds > 0) ? getClosestKnown(['camp'], e) : getClosestKnown(['med'], e); 
                     e.state = "Critical HP!"; speedMult = 1.5; 
                 } else if (e.task === 'water') {
-                    // REPLACED ALL WATER DEPOT LOGIC WITH CAMP STORAGE
                     targetNode = (storage.water > 0) ? getClosestKnown(['camp'], e) : getClosestKnown(['water'], e); 
                     e.state = "Thirsty!"; speedMult = 2.0; 
                 } else if (e.task === 'food') {
                     targetNode = (storage.food > 0) ? (getClosestKnown(['foodDepot'], e) || getClosestKnown(['camp'], e)) : getClosestKnown(['food', 'hunt'], e); 
                     e.state = "Hungry!"; speedMult = 2.0; 
                 } else if (e.task === 'rest') {
-                    targetNode = getClosestKnown(['camp'], e); e.state = "Resting!";
+                    targetNode = getClosestKnown(['camp'], e); e.state = isNight ? "Sleeping 💤" : "Resting!";
                 }
             } 
             else if (!targetNode) {
@@ -412,8 +414,7 @@
                 for(let key in nodes) {
                     let n = nodes[key];
                     if(n.show && (n.type === 'food' || n.type === 'hunt') && n.stock > 0 && !n.locked) {
-                        let d = Math.hypot(n.x - e.x, n.y - e.y);
-                        if(d < minD) { minD = d; closest = key; }
+                        let d = Math.hypot(n.x - e.x, n.y - e.y); if(d < minD) { minD = d; closest = key; }
                     }
                 }
                 if (closest) {
@@ -427,8 +428,7 @@
                 for(let key in nodes) {
                     let n = nodes[key];
                     if(n.show && n.type === 'water' && n.stock > 0 && !n.locked) {
-                        let d = Math.hypot(n.x - e.x, n.y - e.y);
-                        if(d < minD) { minD = d; closest = key; }
+                        let d = Math.hypot(n.x - e.x, n.y - e.y); if(d < minD) { minD = d; closest = key; }
                     }
                 }
                 if (closest) {
@@ -441,7 +441,7 @@
             if (targetNode) {
                 let dist = Math.hypot(targetNode.x - e.x, targetNode.y - e.y);
                 if (dist > 15) {
-                    if (!e.state.includes("Cart") && !e.state.includes("Spear") && !e.state.includes("Smell")) e.state = `Going to ${targetNode.name}`;
+                    if (!e.state.includes("Cart") && !e.state.includes("Spear") && !e.state.includes("Smell") && !e.state.includes("Sleep")) e.state = `Going to ${targetNode.name}`;
                     e.x += ((targetNode.x - e.x) / dist) * simSpeed * speedMult;
                     e.y += ((targetNode.y - e.y) / dist) * simSpeed * speedMult;
                 } else {
@@ -449,12 +449,17 @@
                     if (targetNode.stock !== Infinity) gatherAmt = Math.min(gatherAmt, targetNode.stock);
                     
                     if (targetNode.type === 'water' && gatherAmt > 0) {
-                        e.wat = Math.min(100, e.wat + gatherAmt); storage.water = Math.min(caps.water, storage.water + gatherAmt);
+                        e.wat = Math.min(100, e.wat + gatherAmt); 
+                        if (caps.water !== Infinity) storage.water = Math.min(caps.water, storage.water + gatherAmt);
                         if (targetNode.stock !== Infinity) targetNode.stock -= gatherAmt; e.state = "Drinking";
+                        
+                        // WELL LOGIC: INFINITE WATER STORAGE
                         if (targetNode === nodes.pond1 || targetNode === nodes.pond2) {
                             groundwaterResearch += 0.05 * simSpeed * dt;
                             if (groundwaterResearch >= 100 && !nodes.well.show) {
                                 nodes.well.show = true;
+                                storage.water = Infinity; // Infinite water!
+                                caps.water = Infinity;
                                 document.getElementById('locks-container').innerHTML += `<div class="toggle-row"><label>Ground Water (Well)</label><input type="checkbox" onchange="toggleLock('well', this.checked)"></div>`;
                             }
                         }
@@ -512,18 +517,21 @@
             }
         }
 
-        if (simSpeed > 0 && Math.random() < 0.05 * simSpeed && entities.length < totalBeds && storage.food >= 20) {
+        // REPRODUCTION AT NIGHT: Because everyone is resting at camp, they successfully breed!
+        if (isNight && simSpeed > 0 && Math.random() < 0.1 * simSpeed && storage.food >= 20) {
             let campsOnly = Object.keys(nodes).filter(k => nodes[k].type === 'camp');
-            let m = entities.find(e => e.sex === 'M' && e.hp >= 75 && e.partnerId && campsOnly.some(c => Math.hypot(e.x - nodes[c].x, e.y - nodes[c].y) < 25));
+            let m = entities.find(e => e.sex === 'M' && e.hp >= 50 && e.partnerId && campsOnly.some(c => Math.hypot(e.x - nodes[c].x, e.y - nodes[c].y) < 30));
             if (m) {
-                let f = entities.find(e => e.id === m.partnerId && e.hp >= 75 && campsOnly.some(c => Math.hypot(e.x - nodes[c].x, e.y - nodes[c].y) < 25));
+                // Ensure Female hasn't just given birth today (cooldown)
+                let f = entities.find(e => e.id === m.partnerId && e.hp >= 50 && (timeDay - (e.lastMatedDay || 0) > 1) && campsOnly.some(c => Math.hypot(e.x - nodes[c].x, e.y - nodes[c].y) < 30));
                 if (f) {
+                    f.lastMatedDay = timeDay; // Apply 1-day cooldown
                     let isM = Math.random() > 0.5;
                     entities.push({
                         id: (isM?'M':'F') + entityCounter++, sex: isM?'M':'F', 
                         x: m.x, y: m.y, hp: 100, stam: 100, wat: 100, food: 100, 
-                        daysUnsheltered: 0, hasBed: true, partnerId: null, state: 'Just Born!', color: isM?'#3498db':'#fd79a8',
-                        memory: JSON.parse(JSON.stringify(tribeKnowledge)), scoutTarget: null, hasWeapon: false, hasCart: false
+                        daysUnsheltered: 0, hasBed: false, partnerId: null, state: 'Just Born!', color: isM?'#3498db':'#fd79a8',
+                        memory: JSON.parse(JSON.stringify(tribeKnowledge)), scoutTarget: null, hasWeapon: false, hasCart: false, lastMatedDay: 0
                     });
                     storage.food -= 10; 
                 }
@@ -537,6 +545,13 @@
         
         processAI(dt);
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Render Night Cycle visual overlay
+        if (isNight) {
+            let alpha = Math.min(0.6, ((timeDay % 1) - 0.75) * 3); // Smooth fade in
+            ctx.fillStyle = `rgba(5, 5, 20, ${alpha})`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
 
         for (let key in nodes) {
             let n = nodes[key]; if (!n.show) continue;
@@ -570,13 +585,17 @@
         document.getElementById('hud-wood').innerText = `🪵 ${Math.floor(storage.wood)}/${caps.wood}`;
         document.getElementById('hud-stone').innerText = `🪨 ${Math.floor(storage.stone)}/${caps.stone}`;
         document.getElementById('hud-food').innerText = `🍖 ${Math.floor(storage.food)}/${caps.food}`;
-        document.getElementById('hud-water').innerText = `💧 ${Math.floor(storage.water)}/${caps.water}`;
+        
+        let dispWat = storage.water === Infinity ? '∞' : Math.floor(storage.water);
+        let capWat = caps.water === Infinity ? '∞' : caps.water;
+        document.getElementById('hud-water').innerText = `💧 ${dispWat}/${capWat}`;
+        
         document.getElementById('hud-meds').innerText = `🌿 ${Math.floor(storage.meds)}/${caps.meds}`;
         document.getElementById('hud-tox').innerText = `☠️ ${Math.floor(storage.tox)}/${caps.tox}`;
         document.getElementById('hud-pop').innerText = `👥 ${entities.length} (🛏️ ${bldgs.camps * 4})`;
         
         let y = Math.floor(timeDay/365); let d = Math.floor(timeDay%365);
-        document.getElementById('hud-time').innerText = `Year: ${y}, Day: ${d} (v13)`;
+        document.getElementById('hud-time').innerText = `Year: ${y}, Day: ${d} ${isNight ? '🌙' : '☀️'} (v14)`;
         document.querySelector('.clickable').innerText = `💀 ${deceased.length}`;
 
         requestAnimationFrame(loop);
