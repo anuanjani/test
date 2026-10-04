@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Autonomous Tribal Survival - Night Cycle v14</title>
+    <title>Autonomous Tribal Survival - Night Cycle v15</title>
     <style>
         body { margin: 0; padding: 0; background-color: #1a1a1a; color: white; font-family: sans-serif; overflow: hidden; user-select: none; }
         canvas { display: block; background-color: #2e4a27; }
@@ -199,8 +199,8 @@
         
         let totalBeds = bldgs.camps * 4;
         
-        // BUG FIX: changed > to >= so they proactively expand before running out of beds
-        if (entities.length >= totalBeds && storage.wood >= costs.camp.w && storage.stone >= costs.camp.st) return costs.camp;
+        // BUG FIX: Changed > to >= so they proactively build a camp to allow population growth!
+        if (entities.length >= totalBeds) return costs.camp;
         
         if (storage.food >= caps.food * 0.8) {
             if (bldgs.foodDepot.level === -1) return costs.f0;
@@ -359,7 +359,7 @@
                 } 
                 else if (activePredators.length > 0 && !e.hasWeapon) {
                     if (storage.wood >= 10 && storage.stone >= 10 && storage.tox >= 5) {
-                        targetNode = getClosestKnown(['machineShop'], e); e.state = "Going to craft Spear 🗡️️";
+                        targetNode = getClosestKnown(['machineShop'], e); e.state = "Going to craft Spear 🗡️";
                         if (targetNode && Math.hypot(targetNode.x - e.x, targetNode.y - e.y) < 15) {
                             storage.wood -= 10; storage.stone -= 10; storage.tox -= 5; e.hasWeapon = true; targetNode = null; e.task = 'rest';
                         }
@@ -595,7 +595,7 @@
         document.getElementById('hud-pop').innerText = `👥 ${entities.length} (🛏️ ${bldgs.camps * 4})`;
         
         let y = Math.floor(timeDay/365); let d = Math.floor(timeDay%365);
-        document.getElementById('hud-time').innerText = `Year: ${y}, Day: ${d} ${isNight ? '🌙' : '☀️'} (v14)`;
+        document.getElementById('hud-time').innerText = `Year: ${y}, Day: ${d} ${isNight ? '🌙' : '☀️'} (v15)`;
         document.querySelector('.clickable').innerText = `💀 ${deceased.length}`;
 
         requestAnimationFrame(loop);
