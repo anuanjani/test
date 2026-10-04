@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Autonomous Tribal Survival - Will To Live AI</title>
+    <title>Autonomous Tribal Survival - Balanced AI</title>
     <style>
         body { margin: 0; padding: 0; background-color: #1a1a1a; color: white; font-family: sans-serif; overflow: hidden; user-select: none; }
         canvas { display: block; background-color: #2e4a27; }
@@ -74,7 +74,9 @@
     let simSpeed = 1;
     let timeDay = 0;
     const TWO_YEARS = 730;
-    const VISION_RADIUS = 100;
+    
+    // BALANCE FIX: Increased vision radius so they can find things easier
+    const VISION_RADIUS = 180; 
     
     let storage = { wood: 5, food: 5, water: 5 };
     let caps = { wood: 100, food: 100, water: 100 };
@@ -120,7 +122,12 @@
 
     let groundwaterResearch = 0;
     
-    let baseMemory = { camp: { known: true, stock: Infinity, locked: false, lastSeenDay: 0 } };
+    // BALANCE FIX: Gave them starting knowledge of the river and 1 berry bush so they don't immediately starve.
+    let baseMemory = { 
+        camp: { known: true, stock: Infinity, locked: false, lastSeenDay: 0 },
+        river: { known: true, stock: Infinity, locked: false, lastSeenDay: 0 },
+        berries1: { known: true, stock: 1200, locked: false, lastSeenDay: 0 }
+    };
     let tribeKnowledge = JSON.parse(JSON.stringify(baseMemory));
 
     let entities = [
@@ -234,9 +241,11 @@
                 }
             }
 
-            e.wat -= (0.08 * simSpeed * dt);
-            e.food -= (0.05 * simSpeed * dt);
-            e.stam -= (0.03 * simSpeed * dt);
+            // BALANCE FIX: Reduced metabolism (decay rates) by ~65%. 
+            // Now they survive much longer while searching for resources.
+            e.wat -= (0.025 * simSpeed * dt);
+            e.food -= (0.015 * simSpeed * dt);
+            e.stam -= (0.015 * simSpeed * dt);
 
             if (!e.hasBed) {
                 e.daysUnsheltered += dayInc;
@@ -251,16 +260,14 @@
             let speedMult = (e.stam <= 0) ? 0.5 : 1.0;
             let isDesperate = false;
 
-            // --- THE WILL TO LIVE (Hard-Coded Survival Override) ---
             if (e.wat < 25) { 
                 targetNode = getClosestKnown(['water'], e); 
-                isDesperate = true; e.state = "Dying of Thirst!"; speedMult = 1.2; 
+                isDesperate = true; e.state = "Dying of Thirst!"; speedMult = 2.0; 
             }
             else if (e.food < 25) { 
-                // Will To Live: If HP is low, absolutely avoid dangerous hunts, only look for safe food
                 if (e.hp < 50) targetNode = getClosestKnown(['food'], e); 
                 else targetNode = getClosestKnown(['food', 'hunt'], e); 
-                isDesperate = true; e.state = "Starving!"; speedMult = 1.2; 
+                isDesperate = true; e.state = "Starving!"; speedMult = 2.0; 
             }
             else if (e.hp < 40) { 
                 targetNode = getClosestKnown(['med'], e) || nodes.camp; 
@@ -271,7 +278,6 @@
                 isDesperate = true; e.state = "Exposure Imminent!";
             }
             
-            // --- ROUTINE NEEDS & COLONY GOALS ---
             if (!isDesperate) {
                 if (e.hp < 80) { targetNode = getClosestKnown(['med'], e); if(!targetNode) targetNode = nodes.camp; }
                 else if (e.wat < 45) targetNode = getClosestKnown(['water'], e);
@@ -372,7 +378,6 @@
                     }
                 }
             } else {
-                // SCOUTING LOGIC
                 if (!e.scoutTarget || Math.hypot(e.scoutTarget.x - e.x, e.scoutTarget.y - e.y) < 15) {
                     e.scoutTarget = { x: 50 + Math.random() * (w - 100), y: 50 + Math.random() * (h - 100) };
                 }
