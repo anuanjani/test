@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Autonomous Tribal Survival - Fog of War AI</title>
+    <title>Autonomous Tribal Survival - Will To Live AI</title>
     <style>
         body { margin: 0; padding: 0; background-color: #1a1a1a; color: white; font-family: sans-serif; overflow: hidden; user-select: none; }
         canvas { display: block; background-color: #2e4a27; }
@@ -81,10 +81,7 @@
     let deceased = [];
     let entityCounter = 5;
     
-    let bldgs = {
-        camp: { level: 0, cap: 2 },
-        foodDepot: { level: -1 }, woodDepot: { level: -1 }, waterDepot: { level: -1 }
-    };
+    let bldgs = { camp: { level: 0, cap: 2 }, foodDepot: { level: -1 }, woodDepot: { level: -1 }, waterDepot: { level: -1 } };
 
     const costs = {
         camp0: { w: 80, f: 25, wt: 80, name: "Build New Camp", type: 'camp', targetLevel: 0 },
@@ -123,7 +120,6 @@
 
     let groundwaterResearch = 0;
     
-    // Memory Infrastructure
     let baseMemory = { camp: { known: true, stock: Infinity, locked: false, lastSeenDay: 0 } };
     let tribeKnowledge = JSON.parse(JSON.stringify(baseMemory));
 
@@ -155,7 +151,6 @@
         document.getElementById('dead-list').innerHTML += `<li>${deceased[deceased.length-1]}</li>`;
     }
 
-    // AI looks in PERSONAL MEMORY, not global map!
     function getClosestKnown(typeArray, entity) {
         let best = null, minDist = Infinity;
         for (let key in entity.memory) {
@@ -166,7 +161,7 @@
                 if (dist < minDist) { minDist = dist; best = n; }
             }
         }
-        return best; // Returns null if they don't know where to find the resource!
+        return best;
     }
 
     function determineColonyGoal() {
@@ -254,28 +249,52 @@
 
             let targetNode = null;
             let speedMult = (e.stam <= 0) ? 0.5 : 1.0;
+            let isDesperate = false;
 
-            if (e.hp < 80) { targetNode = getClosestKnown(['med'], e); if(!targetNode) targetNode = nodes.camp; }
-            else if (e.wat < 30) targetNode = getClosestKnown(['water'], e);
-            else if (e.food < 30) targetNode = getClosestKnown(['food', 'hunt'], e);
-            else if (e.stam < 20) targetNode = nodes.camp;
-            else if (activeGoal) {
-                if (storage.wood < activeGoal.w) targetNode = getClosestKnown(['wood'], e);
-                else if (storage.water < activeGoal.wt) targetNode = getClosestKnown(['water'], e);
-                else if (storage.food < activeGoal.f) targetNode = getClosestKnown(['food', 'hunt'], e);
-                else {
-                    targetNode = nodes.camp; 
-                    if (Math.hypot(nodes.camp.x - e.x, nodes.camp.y - e.y) < 15 && e.stam > 10) {
-                        constructGoal(activeGoal);
-                        e.state = "Constructed " + activeGoal.name + "!";
-                        activeGoal = null;
+            // --- THE WILL TO LIVE (Hard-Coded Survival Override) ---
+            if (e.wat < 25) { 
+                targetNode = getClosestKnown(['water'], e); 
+                isDesperate = true; e.state = "Dying of Thirst!"; speedMult = 1.2; 
+            }
+            else if (e.food < 25) { 
+                // Will To Live: If HP is low, absolutely avoid dangerous hunts, only look for safe food
+                if (e.hp < 50) targetNode = getClosestKnown(['food'], e); 
+                else targetNode = getClosestKnown(['food', 'hunt'], e); 
+                isDesperate = true; e.state = "Starving!"; speedMult = 1.2; 
+            }
+            else if (e.hp < 40) { 
+                targetNode = getClosestKnown(['med'], e) || nodes.camp; 
+                isDesperate = true; e.state = "Critical HP!"; 
+            }
+            else if (!e.hasBed && e.daysUnsheltered > (TWO_YEARS - 30)) {
+                targetNode = nodes.camp; 
+                isDesperate = true; e.state = "Exposure Imminent!";
+            }
+            
+            // --- ROUTINE NEEDS & COLONY GOALS ---
+            if (!isDesperate) {
+                if (e.hp < 80) { targetNode = getClosestKnown(['med'], e); if(!targetNode) targetNode = nodes.camp; }
+                else if (e.wat < 45) targetNode = getClosestKnown(['water'], e);
+                else if (e.food < 45) targetNode = getClosestKnown(['food', 'hunt'], e);
+                else if (e.stam < 25) targetNode = nodes.camp;
+                else if (activeGoal) {
+                    if (storage.wood < activeGoal.w) targetNode = getClosestKnown(['wood'], e);
+                    else if (storage.water < activeGoal.wt) targetNode = getClosestKnown(['water'], e);
+                    else if (storage.food < activeGoal.f) targetNode = getClosestKnown(['food', 'hunt'], e);
+                    else {
+                        targetNode = nodes.camp; 
+                        if (Math.hypot(nodes.camp.x - e.x, nodes.camp.y - e.y) < 15 && e.stam > 10) {
+                            constructGoal(activeGoal);
+                            e.state = "Constructed " + activeGoal.name + "!";
+                            activeGoal = null;
+                        }
                     }
+                } else {
+                    if (storage.water < caps.water * 0.5) targetNode = getClosestKnown(['water'], e);
+                    else if (storage.food < caps.food * 0.5) targetNode = getClosestKnown(['food', 'hunt'], e);
+                    else if (storage.wood < caps.wood * 0.5) targetNode = getClosestKnown(['wood'], e);
+                    if (!targetNode) targetNode = nodes.camp; 
                 }
-            } else {
-                if (storage.water < caps.water * 0.5) targetNode = getClosestKnown(['water'], e);
-                else if (storage.food < caps.food * 0.5) targetNode = getClosestKnown(['food', 'hunt'], e);
-                else if (storage.wood < caps.wood * 0.5) targetNode = getClosestKnown(['wood'], e);
-                if (!targetNode) targetNode = nodes.camp; 
             }
 
             if (targetNode) {
@@ -328,7 +347,6 @@
                         e.stam = Math.min(100, e.stam + 0.5 * simSpeed * dt);
                         e.state = "Resting at Camp";
                         
-                        // Gossip / Campfire Memory Sync!
                         for (let key in e.memory) {
                             if (!tribeKnowledge[key] || e.memory[key].lastSeenDay > tribeKnowledge[key].lastSeenDay) {
                                 tribeKnowledge[key] = JSON.parse(JSON.stringify(e.memory[key]));
@@ -354,12 +372,12 @@
                     }
                 }
             } else {
-                // SCOUTING LOGIC (They don't know where any resources are!)
+                // SCOUTING LOGIC
                 if (!e.scoutTarget || Math.hypot(e.scoutTarget.x - e.x, e.scoutTarget.y - e.y) < 15) {
                     e.scoutTarget = { x: 50 + Math.random() * (w - 100), y: 50 + Math.random() * (h - 100) };
                 }
                 let dist = Math.hypot(e.scoutTarget.x - e.x, e.scoutTarget.y - e.y);
-                e.state = "Scouting / Wandering";
+                e.state = isDesperate ? "Panic Searching!" : "Scouting / Wandering";
                 e.x += ((e.scoutTarget.x - e.x) / dist) * simSpeed * speedMult;
                 e.y += ((e.scoutTarget.y - e.y) / dist) * simSpeed * speedMult;
             }
@@ -414,7 +432,6 @@
         }
 
         entities.forEach(e => {
-            // Draw Vision Radius Circle
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
             ctx.beginPath(); ctx.arc(e.x, e.y, VISION_RADIUS, 0, Math.PI*2); ctx.stroke();
             
@@ -429,8 +446,7 @@
             ctx.fillText(nameTag, e.x, e.y + 15);
             ctx.fillText(e.state, e.x, e.y - 25);
             
-            // Draw Scouting Question Mark
-            if (e.state.includes("Scouting")) { ctx.fillStyle = '#f1c40f'; ctx.font = 'bold 14px Arial'; ctx.fillText('?', e.x + 12, e.y - 10); }
+            if (e.state.includes("Scouting") || e.state.includes("Panic")) { ctx.fillStyle = '#f1c40f'; ctx.font = 'bold 14px Arial'; ctx.fillText('?', e.x + 12, e.y - 10); }
             if (!e.hasBed) { ctx.fillStyle = 'orange'; ctx.font = '10px Arial'; ctx.fillText(`Unsheltered: ${Math.floor(e.daysUnsheltered)}d`, e.x, e.y + 25); }
         });
 
