@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Autonomous Tribal Survival - Predators & Stone Age v7</title>
+    <title>Autonomous Tribal Survival - Balanced Logic v8</title>
     <style>
         body { margin: 0; padding: 0; background-color: #1a1a1a; color: white; font-family: sans-serif; overflow: hidden; user-select: none; }
         canvas { display: block; background-color: #2e4a27; }
@@ -33,11 +33,11 @@
 <body>
 
     <div id="hud">
-        <span class="hud-item" id="hud-wood">🪵 0/25</span>
-        <span class="hud-item" id="hud-stone">🪨 0/25</span>
-        <span class="hud-item" id="hud-food">🍖 0/25</span>
-        <span class="hud-item" id="hud-water">💧 0/25</span>
-        <span class="hud-item" id="hud-tox" style="color:#9b59b6;">☠️️ 0/25</span>
+        <span class="hud-item" id="hud-wood">🪵 0/50</span>
+        <span class="hud-item" id="hud-stone">🪨 0/50</span>
+        <span class="hud-item" id="hud-food">🍖 0/100</span>
+        <span class="hud-item" id="hud-water">💧 0/100</span>
+        <span class="hud-item" id="hud-tox" style="color:#9b59b6;">☠ 0/25</span>
         <span class="hud-item" id="hud-pop">👥 4 (🛏️ 4)</span>
         <span class="hud-item clickable" onclick="toggleModal()">💀 0</span>
         <span class="hud-item" id="hud-goal">AI: Survive</span>
@@ -92,9 +92,9 @@
     const TWO_YEARS = 730;
     const VISION_RADIUS = 180; 
     
-    // Base storage is very small (pockets only). Depots are required for stockpiling.
-    let storage = { wood: 15, stone: 15, food: 15, water: 15, meds: 0, tox: 0 };
-    let caps = { wood: 25, stone: 25, food: 25, water: 25, meds: 25, tox: 25 };
+    // FIX: Raised base caps to allow survival before depots are built.
+    let storage = { wood: 15, stone: 15, food: 30, water: 30, meds: 0, tox: 0 };
+    let caps = { wood: 50, stone: 50, food: 100, water: 100, meds: 25, tox: 25 };
     
     let deceased = [];
     let entityCounter = 5;
@@ -166,7 +166,6 @@
         document.getElementById('dead-list').innerHTML += `<li>${deceased[deceased.length-1]}</li>`;
     }
 
-    // PREDATOR LOGIC
     function togglePredator(type, isUnlocked) {
         if (isUnlocked) {
             let count = parseInt(document.getElementById(type === 'lion' ? 'lion-cnt' : 'ele-cnt').value) || 1;
@@ -174,12 +173,9 @@
                 activePredators.push({
                     type: type,
                     x: Math.random() > 0.5 ? 10 : w-10, y: Math.random() > 0.5 ? 10 : h-10,
-                    hp: type === 'lion' ? 100 : 300,
-                    maxHp: type === 'lion' ? 100 : 300,
-                    dmg: type === 'lion' ? 10 : 25,
-                    speed: type === 'lion' ? 1.4 : 0.8,
-                    color: type === 'lion' ? '#f39c12' : '#7f8c8d',
-                    emoji: type === 'lion' ? '🦁' : '🐘'
+                    hp: type === 'lion' ? 100 : 300, maxHp: type === 'lion' ? 100 : 300,
+                    dmg: type === 'lion' ? 10 : 25, speed: type === 'lion' ? 1.4 : 0.8,
+                    color: type === 'lion' ? '#f39c12' : '#7f8c8d', emoji: type === 'lion' ? '🦁' : '🐘'
                 });
             }
         } else {
@@ -202,7 +198,7 @@
 
     function determineColonyGoal() {
         let totalBeds = bldgs.camps * 4;
-        if (entities.length >= totalBeds) return costs.camp;
+        if (entities.length >= totalBeds && storage.wood >= costs.camp.w && storage.stone >= costs.camp.st) return costs.camp;
         if (storage.food >= caps.food * 0.8) return costs.foodDepot;
         if (storage.wood >= caps.wood * 0.8) return costs.woodDepot;
         if (storage.water >= caps.water * 0.8) return costs.waterDepot;
@@ -241,7 +237,6 @@
         activeGoal = determineColonyGoal();
         document.getElementById('hud-goal').innerText = activeGoal ? `AI Goal: ${activeGoal.name}` : `AI: Survive & Expand`;
 
-        // Predator AI Loop
         for(let i = activePredators.length-1; i>=0; i--) {
             let p = activePredators[i];
             let closestE = null; let minD = Infinity;
@@ -280,14 +275,13 @@
 
             if (!e.hasBed) {
                 e.daysUnsheltered += dayInc;
-                if (e.daysUnsheltered >= TWO_YEARS) { logDeath(e, 'Exposure (2 Yrs Unsheltered)'); entities.splice(i, 1); continue; }
+                if (e.daysUnsheltered >= TWO_YEARS) { logDeath(e, 'Exposure'); entities.splice(i, 1); continue; }
             } else { e.daysUnsheltered = 0; }
 
             if (e.hp <= 0) { logDeath(e, 'Killed in Action'); entities.splice(i, 1); continue; }
             if (e.wat <= 0) { logDeath(e, 'Dehydration'); entities.splice(i, 1); continue; }
             if (e.food <= 0) { logDeath(e, 'Starvation'); entities.splice(i, 1); continue; }
 
-            // FIGHT OR FLIGHT (FF) MODEL
             let closestPred = null; let minPDist = Infinity;
             activePredators.forEach((p, idx) => {
                 let d = Math.hypot(p.x - e.x, p.y - e.y);
@@ -297,39 +291,36 @@
             let isFleeing = false; let isFighting = false;
             if (closestPred && minPDist < 120) {
                 if (!e.hasWeapon) {
-                    isFleeing = true;
-                    e.state = "Fleeing Beast!!";
+                    isFleeing = true; e.state = "Fleeing Beast!!";
                     e.x -= ((closestPred.p.x - e.x) / minPDist) * 2.5 * simSpeed * dt;
                     e.y -= ((closestPred.p.y - e.y) / minPDist) * 2.5 * simSpeed * dt;
                     if (minPDist < 20) e.hp -= (closestPred.p.dmg * simSpeed * dt);
                 } else {
-                    isFighting = true;
-                    e.state = "Fighting Beast 🗡️!";
+                    isFighting = true; e.state = "Fighting Beast 🗡️!";
                     if (minPDist > 15) {
                         e.x += ((closestPred.p.x - e.x) / minPDist) * 1.5 * simSpeed * dt;
                         e.y += ((closestPred.p.y - e.y) / minPDist) * 1.5 * simSpeed * dt;
                     } else {
                         closestPred.p.hp -= (30 * simSpeed * dt);
-                        e.hp -= (closestPred.p.dmg * 0.2 * simSpeed * dt); // Takes minor damage while fighting
+                        e.hp -= (closestPred.p.dmg * 0.2 * simSpeed * dt);
                         if (closestPred.p.hp <= 0) {
-                            storage.food = Math.min(caps.food, storage.food + 100); // Meat bounty!
+                            storage.food = Math.min(caps.food, storage.food + 100); 
                             activePredators.splice(closestPred.idx, 1);
                         }
                     }
                 }
             }
 
-            if (isFleeing || isFighting) continue; // Override all other needs!
+            if (isFleeing || isFighting) continue;
 
             let targetNode = null;
             let speedMult = (e.stam <= 0) ? 0.5 : 1.0;
             let isDesperate = false;
 
-            // WEAPON CRAFTING PRIORITY (Requires 10 Wood, 10 Stone, 5 Tox)
             if (activePredators.length > 0 && !e.hasWeapon) {
                 if (storage.wood >= 10 && storage.stone >= 10 && storage.tox >= 5) {
                     targetNode = getClosestKnown(['camp'], e); e.state = "Going to craft weapon!";
-                    if (Math.hypot(targetNode.x - e.x, targetNode.y - e.y) < 15) {
+                    if (targetNode && Math.hypot(targetNode.x - e.x, targetNode.y - e.y) < 15) {
                         storage.wood -= 10; storage.stone -= 10; storage.tox -= 5;
                         e.hasWeapon = true; e.state = "Weapon Crafted!"; targetNode = null;
                     }
@@ -342,7 +333,6 @@
             }
 
             if (!targetNode) {
-                // STRICT STORAGE DEPOT LOGIC: Cannot eat from Camp. Must find Depot or raw Food.
                 if (e.hp < 50) { 
                     targetNode = (storage.meds > 0 && bldgs.medsDepots > 0) ? getClosestKnown(['medsDepot'], e) : getClosestKnown(['med'], e); 
                     isDesperate = true; e.state = "Critical HP!"; speedMult = 1.5; 
@@ -373,7 +363,6 @@
                             }
                         }
                     } else {
-                        // Gather what is missing
                         if (storage.water < caps.water * 0.5) targetNode = getClosestKnown(['water'], e);
                         else if (storage.food < caps.food * 0.5) targetNode = getClosestKnown(['food', 'hunt'], e);
                         else if (storage.wood < caps.wood * 0.5) targetNode = getClosestKnown(['wood'], e);
@@ -395,35 +384,24 @@
                     if (targetNode.stock !== Infinity) gatherAmt = Math.min(gatherAmt, targetNode.stock);
                     
                     if (targetNode.type === 'water' && gatherAmt > 0) {
-                        e.wat = Math.min(100, e.wat + gatherAmt);
-                        if (e.wat >= 100) storage.water = Math.min(caps.water, storage.water + gatherAmt);
-                        if (targetNode.stock !== Infinity) targetNode.stock -= gatherAmt;
-                        e.state = "Drinking";
+                        e.wat = Math.min(100, e.wat + gatherAmt); storage.water = Math.min(caps.water, storage.water + gatherAmt);
+                        if (targetNode.stock !== Infinity) targetNode.stock -= gatherAmt; e.state = "Drinking";
                     } else if (targetNode.type === 'food' && gatherAmt > 0) {
-                        e.food = Math.min(100, e.food + gatherAmt);
-                        storage.food = Math.min(caps.food, storage.food + gatherAmt * 0.5);
-                        if (targetNode.stock !== Infinity) targetNode.stock -= gatherAmt;
-                        e.state = "Gathering Food";
+                        e.food = Math.min(100, e.food + gatherAmt); storage.food = Math.min(caps.food, storage.food + gatherAmt * 0.5);
+                        if (targetNode.stock !== Infinity) targetNode.stock -= gatherAmt; e.state = "Gathering Food";
                     } else if (targetNode.type === 'stone' && gatherAmt > 0) {
-                        storage.stone = Math.min(caps.stone, storage.stone + gatherAmt);
-                        e.stam -= (0.2 * simSpeed * dt);
-                        if (targetNode.stock !== Infinity) targetNode.stock -= gatherAmt;
-                        e.state = "Mining Stone";
+                        storage.stone = Math.min(caps.stone, storage.stone + gatherAmt); e.stam -= (0.2 * simSpeed * dt);
+                        if (targetNode.stock !== Infinity) targetNode.stock -= gatherAmt; e.state = "Mining Stone";
                     } else if (targetNode.type === 'wood' && gatherAmt > 0) {
-                        storage.wood = Math.min(caps.wood, storage.wood + gatherAmt);
-                        e.stam -= (0.1 * simSpeed * dt);
-                        if (targetNode.stock !== Infinity) targetNode.stock -= gatherAmt;
-                        e.state = "Chopping Wood";
+                        storage.wood = Math.min(caps.wood, storage.wood + gatherAmt); e.stam -= (0.1 * simSpeed * dt);
+                        if (targetNode.stock !== Infinity) targetNode.stock -= gatherAmt; e.state = "Chopping Wood";
                     } else if (targetNode.type === 'tox' && gatherAmt > 0) {
-                        storage.tox = Math.min(caps.tox, storage.tox + gatherAmt);
-                        e.hp -= (0.5 * simSpeed * dt); // Slight damage handling poison
-                        if (targetNode.stock !== Infinity) targetNode.stock -= gatherAmt;
-                        e.state = "Gathering Toxins";
+                        storage.tox = Math.min(caps.tox, storage.tox + gatherAmt); e.hp -= (0.5 * simSpeed * dt);
+                        if (targetNode.stock !== Infinity) targetNode.stock -= gatherAmt; e.state = "Gathering Toxins";
                     } else if (targetNode.type === 'camp' || targetNode.type.includes('Depot')) {
                         e.stam = Math.min(100, e.stam + 0.5 * simSpeed * dt);
                         if (!e.state.includes("Craft")) e.state = "At Base";
                         
-                        // Strict eating from Depots only
                         if (e.wat < 100 && storage.water > 0 && targetNode.type === 'waterDepot') {
                             let drink = Math.min(100 - e.wat, storage.water, 2 * simSpeed * dt);
                             e.wat += drink; storage.water -= drink; e.state = "Drinking from Storage";
@@ -433,7 +411,6 @@
                             e.food += eat; storage.food -= eat; e.state = "Eating from Storage";
                         }
                         
-                        // Sync Memory at Camp
                         if (targetNode.type === 'camp') {
                             for (let key in e.memory) {
                                 if (!tribeKnowledge[key] || e.memory[key].lastSeenDay > tribeKnowledge[key].lastSeenDay) tribeKnowledge[key] = JSON.parse(JSON.stringify(e.memory[key]));
@@ -494,7 +471,6 @@
             if (n.locked && n.stock > 0) { ctx.fillStyle = 'red'; ctx.font = '20px Arial'; ctx.fillText('🔒', n.x, n.y + 8); }
         }
 
-        // Draw Predators
         activePredators.forEach(p => {
             ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, 15, 0, Math.PI*2); ctx.fill();
             ctx.fillStyle = 'red'; ctx.fillRect(p.x - 15, p.y - 20, 30, 4);
@@ -522,7 +498,7 @@
         document.getElementById('hud-pop').innerText = `👥 ${entities.length} (🛏️ ${bldgs.camps * 4})`;
         
         let y = Math.floor(timeDay/365); let d = Math.floor(timeDay%365);
-        document.getElementById('hud-time').innerText = `Year: ${y}, Day: ${d} (v7)`;
+        document.getElementById('hud-time').innerText = `Year: ${y}, Day: ${d} (v8)`;
         document.querySelector('.clickable').innerText = `💀 ${deceased.length}`;
 
         requestAnimationFrame(loop);
