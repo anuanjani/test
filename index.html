@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Autonomous Tribal Survival - Instincts v12</title>
+    <title>Autonomous Tribal Survival - The Oasis v13</title>
     <style>
         body { margin: 0; padding: 0; background-color: #1a1a1a; color: white; font-family: sans-serif; overflow: hidden; user-select: none; }
         canvas { display: block; background-color: #2e4a27; }
@@ -96,10 +96,15 @@
     let deceased = []; let entityCounter = 5; let activePredators = [];
     
     let bldgs = { 
-        camps: 1, machineShop: { level: -1 }, foodDepot: { level: -1 }, 
-        woodDepot: { level: -1 }, medsDepot: { level: -1 }, stoneDepot: { level: -1 } 
+        camps: 1, 
+        machineShop: { level: -1 }, 
+        foodDepot: { level: -1 }, 
+        woodDepot: { level: -1 }, 
+        medsDepot: { level: -1 }, 
+        stoneDepot: { level: -1 } 
     };
 
+    // WATER DEPOT COMPLETELY REMOVED FROM COSTS
     const costs = {
         camp: { w: 30, st: 20, name: "Build Camp (+4 Beds)", type: 'camp' },
         shop: { w: 50, st: 50, name: "Build Machine Shop", type: 'machineShop' },
@@ -115,11 +120,14 @@
     let activeGoal = null;
     const w = canvas.width, h = canvas.height;
     
-    // Resources start safely near the camp to ensure early survival
+    // NEW SPAWN LOGIC: Small Pond and Berries spawn near Camp. River pushed to edge.
     const nodes = {
         camp1: { x: w*0.5, y: h*0.5, name: 'Camp 1', type: 'camp', color: '#f39c12', locked: false, show: true, stock: Infinity, max: Infinity },
-        river: { x: w*0.5 - 60, y: h*0.5 - 60, name: 'River', type: 'water', color: '#3498db', locked: false, show: true, stock: Infinity, max: Infinity },
+        pond2: { x: w*0.5 - 60, y: h*0.5 - 60, name: 'Small Pond', type: 'water', color: '#2980b9', locked: false, show: true, stock: 800, max: 800 },
         berries1: { x: w*0.5 + 60, y: h*0.5 + 60, name: 'Berry Grove', type: 'food', color: '#e74c3c', locked: false, show: true, stock: 1200, max: 1200 },
+        
+        // Distant locations
+        river: { x: w*0.1, y: h*0.15, name: 'River', type: 'water', color: '#3498db', locked: false, show: true, stock: Infinity, max: Infinity },
         pond1: { x: w*0.85, y: h*0.85, name: 'Distant Pond', type: 'water', color: '#2980b9', locked: false, show: true, stock: 1500, max: 1500 },
         well: { x: w*0.45, y: h*0.55, name: 'Ground Water (Well)', type: 'water', color: '#00cec9', locked: false, show: false, stock: Infinity, max: Infinity },
         forest1: { x: w*0.8, y: h*0.2, name: 'Deep Forest', type: 'wood', color: '#27ae60', locked: false, show: true, stock: 3000, max: 3000 },
@@ -130,9 +138,11 @@
     };
 
     let groundwaterResearch = 0;
+    
+    // Update starting memory to match the new close nodes
     let baseMemory = { 
         camp1: { known: true, stock: Infinity, locked: false, lastSeenDay: 0 },
-        river: { known: true, stock: Infinity, locked: false, lastSeenDay: 0 },
+        pond2: { known: true, stock: 800, locked: false, lastSeenDay: 0 },
         berries1: { known: true, stock: 1200, locked: false, lastSeenDay: 0 }
     };
     let tribeKnowledge = JSON.parse(JSON.stringify(baseMemory));
@@ -197,7 +207,6 @@
         if (storage.water < 15) return { type: 'panic_water', name: "EMERGENCY: Fetch Water!" };
         
         let totalBeds = bldgs.camps * 4;
-        
         if (entities.length > totalBeds && storage.wood >= costs.camp.w && storage.stone >= costs.camp.st) return costs.camp;
         
         if (storage.food >= caps.food * 0.8) {
@@ -366,6 +375,7 @@
                     targetNode = (storage.meds > 0) ? getClosestKnown(['camp'], e) : getClosestKnown(['med'], e); 
                     e.state = "Critical HP!"; speedMult = 1.5; 
                 } else if (e.task === 'water') {
+                    // REPLACED ALL WATER DEPOT LOGIC WITH CAMP STORAGE
                     targetNode = (storage.water > 0) ? getClosestKnown(['camp'], e) : getClosestKnown(['water'], e); 
                     e.state = "Thirsty!"; speedMult = 2.0; 
                 } else if (e.task === 'food') {
@@ -397,8 +407,6 @@
                 }
             }
 
-            // *** VERSION 12 SURVIVAL INSTINCTS (SMELL) ***
-            // If they are starving/thirsty and don't know where to go, bypass memory and magically "smell" the nearest resource so they don't wander to death.
             if (!targetNode && (e.task === 'food' || e.food < 35 || (activeGoal && activeGoal.type === 'panic_food'))) {
                 let closest = null; let minD = Infinity;
                 for(let key in nodes) {
@@ -443,6 +451,13 @@
                     if (targetNode.type === 'water' && gatherAmt > 0) {
                         e.wat = Math.min(100, e.wat + gatherAmt); storage.water = Math.min(caps.water, storage.water + gatherAmt);
                         if (targetNode.stock !== Infinity) targetNode.stock -= gatherAmt; e.state = "Drinking";
+                        if (targetNode === nodes.pond1 || targetNode === nodes.pond2) {
+                            groundwaterResearch += 0.05 * simSpeed * dt;
+                            if (groundwaterResearch >= 100 && !nodes.well.show) {
+                                nodes.well.show = true;
+                                document.getElementById('locks-container').innerHTML += `<div class="toggle-row"><label>Ground Water (Well)</label><input type="checkbox" onchange="toggleLock('well', this.checked)"></div>`;
+                            }
+                        }
                     } else if (targetNode.type === 'food' && gatherAmt > 0) {
                         e.food = Math.min(100, e.food + gatherAmt); storage.food = Math.min(caps.food, storage.food + gatherAmt * 0.5);
                         if (targetNode.stock !== Infinity) targetNode.stock -= gatherAmt; e.state = "Gathering Food";
@@ -458,7 +473,7 @@
                     } else if (targetNode.type === 'camp' || targetNode.type.includes('Depot')) {
                         e.stam = Math.min(100, e.stam + 0.5 * simSpeed * dt);
                         
-                        if (e.wat < 100 && storage.water > 0) {
+                        if (e.wat < 100 && storage.water > 0 && targetNode.type === 'camp') {
                             let drink = Math.min(100 - e.wat, storage.water, 5 * simSpeed * dt); e.wat += drink; storage.water -= drink; e.state = "Drinking from Storage";
                         }
                         if (e.food < 100 && storage.food > 0 && (targetNode.type === 'foodDepot' || targetNode.type === 'camp')) {
@@ -561,7 +576,7 @@
         document.getElementById('hud-pop').innerText = `👥 ${entities.length} (🛏️ ${bldgs.camps * 4})`;
         
         let y = Math.floor(timeDay/365); let d = Math.floor(timeDay%365);
-        document.getElementById('hud-time').innerText = `Year: ${y}, Day: ${d} (v12)`;
+        document.getElementById('hud-time').innerText = `Year: ${y}, Day: ${d} (v13)`;
         document.querySelector('.clickable').innerText = `💀 ${deceased.length}`;
 
         requestAnimationFrame(loop);
