@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Autonomous Tribal Survival - Reproduction & Meds Update</title>
+    <title>Autonomous Tribal Survival - City Builder v6</title>
     <style>
         body { margin: 0; padding: 0; background-color: #1a1a1a; color: white; font-family: sans-serif; overflow: hidden; user-select: none; }
         canvas { display: block; background-color: #2e4a27; }
@@ -36,10 +36,10 @@
         <span class="hud-item" id="hud-food">🍖 5/100</span>
         <span class="hud-item" id="hud-water">💧 5/100</span>
         <span class="hud-item" id="hud-meds" style="color: #2ecc71;">🌿 0/100</span>
-        <span class="hud-item" id="hud-pop">👥 4 (🛏️ 2)</span>
+        <span class="hud-item" id="hud-pop">👥 4 (🛏️ 4)</span>
         <span class="hud-item clickable" onclick="toggleModal()">☠️ 0</span>
         <span class="hud-item" id="hud-goal">AI: Survive</span>
-        <span class="hud-item" id="hud-day">Day: 0</span>
+        <span class="hud-item" id="hud-day">Day: 0 (v6)</span>
     </div>
 
     <div id="steward-panel" class="panel">
@@ -77,39 +77,28 @@
     const TWO_YEARS = 730;
     const VISION_RADIUS = 180; 
     
-    // NEW: Added Meds to storage
     let storage = { wood: 5, food: 5, water: 5, meds: 0 };
     let caps = { wood: 100, food: 100, water: 100, meds: 100 };
     let deceased = [];
     let entityCounter = 5;
     
-    // NEW: Added medsDepot
-    let bldgs = { camp: { level: 0, cap: 2 }, foodDepot: { level: -1 }, woodDepot: { level: -1 }, waterDepot: { level: -1 }, medsDepot: { level: -1 } };
+    // DYNAMIC CITY BUILDINGS
+    let bldgs = { camps: 1, foodDepots: 0, woodDepots: 0, waterDepots: 0, medsDepots: 0 };
 
+    // New Costs designed to allow infinite expansion under the base 100 cap
     const costs = {
-        camp0: { w: 80, f: 25, wt: 80, name: "Build New Camp", type: 'camp', targetLevel: 0 },
-        camp1: { w: 55, f: 18, wt: 55, name: "Upgrade Camp L1", type: 'camp', targetLevel: 1 },
-        camp2: { w: 90, f: 55, wt: 100, name: "Upgrade Camp L2", type: 'camp', targetLevel: 2 },
-        food0: { w: 30, f: 40, wt: 40, name: "Build Food Depot", type: 'foodDepot', targetLevel: 0, newCap: 120 },
-        food1: { w: 55, f: 90, wt: 50, name: "Upgrade Food Depot L1", type: 'foodDepot', targetLevel: 1, newCap: 250 },
-        food2: { w: 55, f: 105, wt: 80, name: "Upgrade Food Depot L2", type: 'foodDepot', targetLevel: 2, newCap: 500 },
-        wood0: { w: 40, f: 15, wt: 30, name: "Build Wood Depot", type: 'woodDepot', targetLevel: 0, newCap: 150 },
-        wood1: { w: 90, f: 55, wt: 50, name: "Upgrade Wood Depot L1", type: 'woodDepot', targetLevel: 1, newCap: 300 },
-        wood2: { w: 120, f: 55, wt: 80, name: "Upgrade Wood Depot L2", type: 'woodDepot', targetLevel: 2, newCap: 600 },
-        water0: { w: 30, f: 15, wt: 40, name: "Build Water Depot", type: 'waterDepot', targetLevel: 0, newCap: 150 },
-        water1: { w: 50, f: 55, wt: 90, name: "Upgrade Water Depot L1", type: 'waterDepot', targetLevel: 1, newCap: 300 },
-        water2: { w: 80, f: 55, wt: 120, name: "Upgrade Water Depot L2", type: 'waterDepot', targetLevel: 2, newCap: 600 },
-        // NEW: Meds costs
-        med0: { w: 30, f: 10, wt: 10, name: "Build Meds Depot", type: 'medsDepot', targetLevel: 0, newCap: 120 },
-        med1: { w: 50, f: 20, wt: 20, name: "Upgrade Meds L1", type: 'medsDepot', targetLevel: 1, newCap: 250 },
-        med2: { w: 80, f: 30, wt: 30, name: "Upgrade Meds L2", type: 'medsDepot', targetLevel: 2, newCap: 500 }
+        camp: { w: 80, f: 30, wt: 50, name: "Build New Camp (+4 Beds)", type: 'camp' },
+        foodDepot: { w: 60, f: 10, wt: 20, name: "Build Food Depot", type: 'foodDepot' },
+        woodDepot: { w: 40, f: 20, wt: 10, name: "Build Wood Depot", type: 'woodDepot' },
+        waterDepot: { w: 50, f: 10, wt: 30, name: "Build Water Depot", type: 'waterDepot' },
+        medsDepot: { w: 50, f: 10, wt: 20, name: "Build Meds Depot", type: 'medsDepot' }
     };
 
     let activeGoal = null;
     const w = canvas.width, h = canvas.height;
     
     const nodes = {
-        river: { x: w*0.1, y: h*0.15, name: 'River (Infinite)', type: 'water', color: '#3498db', locked: false, show: true, stock: Infinity, max: Infinity },
+        river: { x: w*0.1, y: h*0.15, name: 'River', type: 'water', color: '#3498db', locked: false, show: true, stock: Infinity, max: Infinity },
         pond1: { x: w*0.85, y: h*0.85, name: 'Distant Pond', type: 'water', color: '#2980b9', locked: false, show: true, stock: 1500, max: 1500 },
         pond2: { x: w*0.35, y: h*0.7, name: 'Small Pond', type: 'water', color: '#2980b9', locked: false, show: true, stock: 800, max: 800 },
         well: { x: w*0.45, y: h*0.55, name: 'Ground Water (Well)', type: 'water', color: '#00cec9', locked: false, show: false, stock: Infinity, max: Infinity },
@@ -118,17 +107,15 @@
         berries1: { x: w*0.2, y: h*0.8, name: 'Berry Grove 1', type: 'food', color: '#e74c3c', locked: false, show: true, stock: 1200, max: 1200 },
         berries2: { x: w*0.7, y: h*0.7, name: 'Berry Grove 2', type: 'food', color: '#e74c3c', locked: false, show: true, stock: 800, max: 800 },
         boars1: { x: w*0.8, y: h*0.5, name: 'Boar Pack 1', type: 'hunt', color: '#d35400', locked: false, show: true, stock: 1500, max: 1500 },
-        boars2: { x: w*0.4, y: h*0.2, name: 'Boar Pack 2', type: 'hunt', color: '#d35400', locked: false, show: true, stock: 1000, max: 1000 },
         med_herbs1: { x: w*0.3, y: h*0.45, name: 'Medicinal Herbs', type: 'med', color: '#1abc9c', locked: false, show: true, stock: 500, max: 500 },
-        tox_herbs1: { x: w*0.5, y: h*0.8, name: 'Toxic Herbs 1', type: 'tox', color: '#9b59b6', locked: false, show: true, stock: 300, max: 300 },
-        tox_herbs2: { x: w*0.65, y: h*0.3, name: 'Toxic Herbs 2', type: 'tox', color: '#8e44ad', locked: false, show: true, stock: 300, max: 300 },
-        camp: { x: w*0.5, y: h*0.5, name: 'Camp', type: 'camp', color: '#f39c12', locked: false, show: true, stock: Infinity, max: Infinity }
+        tox_herbs1: { x: w*0.5, y: h*0.8, name: 'Toxic Herbs', type: 'tox', color: '#9b59b6', locked: false, show: true, stock: 300, max: 300 },
+        camp1: { x: w*0.5, y: h*0.5, name: 'Camp 1', type: 'camp', color: '#f39c12', locked: false, show: true, stock: Infinity, max: Infinity }
     };
 
     let groundwaterResearch = 0;
     
     let baseMemory = { 
-        camp: { known: true, stock: Infinity, locked: false, lastSeenDay: 0 },
+        camp1: { known: true, stock: Infinity, locked: false, lastSeenDay: 0 },
         river: { known: true, stock: Infinity, locked: false, lastSeenDay: 0 },
         berries1: { known: true, stock: 1200, locked: false, lastSeenDay: 0 }
     };
@@ -137,14 +124,15 @@
     let entities = [
         { id: 'M1', sex: 'M', x: w*0.5, y: h*0.5, hp: 100, stam: 100, wat: 100, food: 100, daysUnsheltered: 0, hasBed: true, state: 'IDLE', color: '#3498db', memory: JSON.parse(JSON.stringify(baseMemory)), scoutTarget: null },
         { id: 'M2', sex: 'M', x: w*0.52, y: h*0.52, hp: 100, stam: 100, wat: 100, food: 100, daysUnsheltered: 0, hasBed: true, state: 'IDLE', color: '#3498db', memory: JSON.parse(JSON.stringify(baseMemory)), scoutTarget: null },
-        { id: 'F1', sex: 'F', x: w*0.48, y: h*0.48, hp: 100, stam: 100, wat: 100, food: 100, daysUnsheltered: 0, hasBed: false, state: 'IDLE', color: '#fd79a8', memory: JSON.parse(JSON.stringify(baseMemory)), scoutTarget: null },
-        { id: 'F2', sex: 'F', x: w*0.5, y: h*0.48, hp: 100, stam: 100, wat: 100, food: 100, daysUnsheltered: 0, hasBed: false, state: 'IDLE', color: '#fd79a8', memory: JSON.parse(JSON.stringify(baseMemory)), scoutTarget: null }
+        { id: 'F1', sex: 'F', x: w*0.48, y: h*0.48, hp: 100, stam: 100, wat: 100, food: 100, daysUnsheltered: 0, hasBed: true, state: 'IDLE', color: '#fd79a8', memory: JSON.parse(JSON.stringify(baseMemory)), scoutTarget: null },
+        { id: 'F2', sex: 'F', x: w*0.5, y: h*0.48, hp: 100, stam: 100, wat: 100, food: 100, daysUnsheltered: 0, hasBed: true, state: 'IDLE', color: '#fd79a8', memory: JSON.parse(JSON.stringify(baseMemory)), scoutTarget: null }
     ];
 
     function setupUI() {
         let locksHtml = '';
         for (let key in nodes) {
-            if (key === 'camp' || key === 'well') continue;
+            // Depots and camps don't get locks to keep UI clean
+            if (nodes[key].type === 'camp' || nodes[key].type.includes('Depot') || key === 'well') continue;
             locksHtml += `<div class="toggle-row"><label>${nodes[key].name}</label><input type="checkbox" onchange="toggleLock('${key}', this.checked)"></div>`;
         }
         document.getElementById('locks-container').innerHTML = locksHtml;
@@ -176,44 +164,55 @@
     }
 
     function determineColonyGoal() {
-        if (entities.length > bldgs.camp.cap) {
-            if (bldgs.camp.level === 0) return costs.camp1;
-            if (bldgs.camp.level === 1) return costs.camp2;
-            if (bldgs.camp.level === 2) return costs.camp0; 
-        }
-        if (storage.food > caps.food * 0.8) {
-            if (bldgs.foodDepot.level === -1) return costs.food0;
-            if (bldgs.foodDepot.level === 0) return costs.food1;
-            if (bldgs.foodDepot.level === 1) return costs.food2;
-        }
-        if (storage.wood > caps.wood * 0.8) {
-            if (bldgs.woodDepot.level === -1) return costs.wood0;
-            if (bldgs.woodDepot.level === 0) return costs.wood1;
-            if (bldgs.woodDepot.level === 1) return costs.wood2;
-        }
-        if (storage.water > caps.water * 0.8) {
-            if (bldgs.waterDepot.level === -1) return costs.water0;
-            if (bldgs.waterDepot.level === 0) return costs.water1;
-            if (bldgs.waterDepot.level === 1) return costs.water2;
-        }
-        if (storage.meds > caps.meds * 0.8) {
-            if (bldgs.medsDepot.level === -1) return costs.med0;
-            if (bldgs.medsDepot.level === 0) return costs.med1;
-            if (bldgs.medsDepot.level === 1) return costs.med2;
-        }
+        let totalBeds = bldgs.camps * 4;
+        if (entities.length >= totalBeds) return costs.camp;
+        if (storage.food >= caps.food * 0.8) return costs.foodDepot;
+        if (storage.wood >= caps.wood * 0.8) return costs.woodDepot;
+        if (storage.water >= caps.water * 0.8) return costs.waterDepot;
+        if (storage.meds >= caps.meds * 0.8) return costs.medsDepot;
         return null; 
     }
 
     function constructGoal(goal) {
         storage.wood -= goal.w; storage.food -= goal.f; storage.water -= goal.wt;
+        
+        // Spawn the new building near the center organically
+        let nx = (w*0.5) + (Math.random() - 0.5) * 400;
+        let ny = (h*0.5) + (Math.random() - 0.5) * 400;
+        let nKey = '';
+        let nObj = { x: nx, y: ny, locked: false, show: true, stock: Infinity, max: Infinity };
+
         if (goal.type === 'camp') {
-            if (goal.targetLevel === 0) bldgs.camp.cap += 2;
-            else if (goal.targetLevel === 1) { bldgs.camp.level = 1; bldgs.camp.cap = 3; }
-            else if (goal.targetLevel === 2) { bldgs.camp.level = 2; bldgs.camp.cap = 5; }
-        } else if (goal.type === 'foodDepot') { bldgs.foodDepot.level = goal.targetLevel; caps.food = goal.newCap; }
-        else if (goal.type === 'woodDepot') { bldgs.woodDepot.level = goal.targetLevel; caps.wood = goal.newCap; }
-        else if (goal.type === 'waterDepot') { bldgs.waterDepot.level = goal.targetLevel; caps.water = goal.newCap; }
-        else if (goal.type === 'medsDepot') { bldgs.medsDepot.level = goal.targetLevel; caps.meds = goal.newCap; }
+            bldgs.camps++;
+            nKey = 'camp' + bldgs.camps;
+            nObj.name = 'Camp ' + bldgs.camps;
+            nObj.type = 'camp'; nObj.color = '#f39c12';
+        } else if (goal.type === 'foodDepot') {
+            bldgs.foodDepots++; caps.food += 300;
+            nKey = 'foodDepot' + bldgs.foodDepots;
+            nObj.name = 'Food Depot ' + bldgs.foodDepots;
+            nObj.type = 'foodDepot'; nObj.color = '#e67e22';
+        } else if (goal.type === 'woodDepot') {
+            bldgs.woodDepots++; caps.wood += 300;
+            nKey = 'woodDepot' + bldgs.woodDepots;
+            nObj.name = 'Wood Depot ' + bldgs.woodDepots;
+            nObj.type = 'woodDepot'; nObj.color = '#8e44ad';
+        } else if (goal.type === 'waterDepot') {
+            bldgs.waterDepots++; caps.water += 300;
+            nKey = 'waterDepot' + bldgs.waterDepots;
+            nObj.name = 'Water Depot ' + bldgs.waterDepots;
+            nObj.type = 'waterDepot'; nObj.color = '#3498db';
+        } else if (goal.type === 'medsDepot') {
+            bldgs.medsDepots++; caps.meds += 300;
+            nKey = 'medsDepot' + bldgs.medsDepots;
+            nObj.name = 'Meds Depot ' + bldgs.medsDepots;
+            nObj.type = 'medsDepot'; nObj.color = '#2ecc71';
+        }
+
+        nodes[nKey] = nObj;
+        tribeKnowledge[nKey] = { known: true, stock: Infinity, locked: false, lastSeenDay: timeDay };
+        entities.forEach(e => e.memory[nKey] = JSON.parse(JSON.stringify(tribeKnowledge[nKey])));
+        setupUI(); // Refresh UI dynamically
     }
 
     function processAI(dt) {
@@ -221,7 +220,7 @@
         timeDay += dayInc;
 
         activeGoal = determineColonyGoal();
-        document.getElementById('hud-goal').innerText = activeGoal ? `AI Goal: ${activeGoal.name.slice(0,10)}..` : `AI: Survive & Stockpile`;
+        document.getElementById('hud-goal').innerText = activeGoal ? `AI Goal: ${activeGoal.name}` : `AI: Survive & Expand`;
 
         entities.forEach(e => {
             if (!e.partnerId && e.hp > 60) {
@@ -234,14 +233,14 @@
             }
         });
 
+        let totalBeds = bldgs.camps * 4;
         let shelteredCount = entities.filter(e => e.hasBed).length;
-        if (shelteredCount < bldgs.camp.cap) {
+        if (shelteredCount < totalBeds) {
             let unsheltered = entities.filter(e => !e.hasBed);
             if (unsheltered.length > 0) unsheltered[0].hasBed = true;
         }
 
-        // REPRODUCTION LOGIC FIX: Check if it's mating time
-        let isMatingTime = (entities.length < bldgs.camp.cap && storage.food >= 30);
+        let isMatingTime = (entities.length < totalBeds && storage.food >= 30);
 
         for (let i = entities.length - 1; i >= 0; i--) {
             let e = entities[i];
@@ -270,43 +269,37 @@
             let speedMult = (e.stam <= 0) ? 0.5 : 1.0;
             let isDesperate = false;
 
-            // NEW: Use Camp Storage for Meds!
+            // SMART STORAGE LOGISTICS: Use specific depots if available, fallback to Camp emergency stash
             if (e.hp < 50) { 
-                targetNode = (storage.meds > 0) ? nodes.camp : (getClosestKnown(['med'], e) || nodes.camp); 
+                targetNode = (storage.meds > 0) ? (getClosestKnown(['medsDepot'], e) || getClosestKnown(['camp'], e)) : getClosestKnown(['med'], e); 
                 isDesperate = true; e.state = "Critical HP!"; speedMult = 1.5; 
             }
             else if (e.wat < 30) { 
-                targetNode = (storage.water > 0) ? nodes.camp : getClosestKnown(['water'], e); 
+                targetNode = (storage.water > 0) ? (getClosestKnown(['waterDepot'], e) || getClosestKnown(['camp'], e)) : getClosestKnown(['water'], e); 
                 isDesperate = true; e.state = "Dying of Thirst!"; speedMult = 2.0; 
             }
             else if (e.food < 30) { 
-                targetNode = (storage.food > 0) ? nodes.camp : (e.hp < 50 ? getClosestKnown(['food'], e) : getClosestKnown(['food', 'hunt'], e)); 
+                targetNode = (storage.food > 0) ? (getClosestKnown(['foodDepot'], e) || getClosestKnown(['camp'], e)) : (e.hp < 50 ? getClosestKnown(['food'], e) : getClosestKnown(['food', 'hunt'], e)); 
                 isDesperate = true; e.state = "Starving!"; speedMult = 2.0; 
             }
             else if (!e.hasBed && e.daysUnsheltered > (TWO_YEARS - 30)) {
-                targetNode = nodes.camp; 
+                targetNode = getClosestKnown(['camp'], e); 
                 isDesperate = true; e.state = "Exposure Imminent!";
             }
             
             if (!isDesperate) {
-                if (e.hp < 80) { targetNode = (storage.meds > 0) ? nodes.camp : (getClosestKnown(['med'], e) || nodes.camp); }
-                else if (e.wat < 50) { targetNode = (storage.water > 10) ? nodes.camp : getClosestKnown(['water'], e); }
-                else if (e.food < 50) { targetNode = (storage.food > 10) ? nodes.camp : getClosestKnown(['food', 'hunt'], e); }
-                
-                // REPRODUCTION SYNC: Forces bonded partners to go home to mate!
-                else if (isMatingTime && e.partnerId && e.hp > 75) {
-                    targetNode = nodes.camp;
-                    e.state = "Courting 💞";
-                }
-                
-                else if (e.stam < 25) targetNode = nodes.camp;
+                if (e.hp < 80) { targetNode = (storage.meds > 0) ? (getClosestKnown(['medsDepot'], e) || getClosestKnown(['camp'], e)) : getClosestKnown(['med'], e); }
+                else if (e.wat < 50) { targetNode = (storage.water > 10) ? (getClosestKnown(['waterDepot'], e) || getClosestKnown(['camp'], e)) : getClosestKnown(['water'], e); }
+                else if (e.food < 50) { targetNode = (storage.food > 10) ? (getClosestKnown(['foodDepot'], e) || getClosestKnown(['camp'], e)) : getClosestKnown(['food', 'hunt'], e); }
+                else if (isMatingTime && e.partnerId && e.hp > 75) { targetNode = getClosestKnown(['camp'], e); e.state = "Courting 💞"; }
+                else if (e.stam < 25) targetNode = getClosestKnown(['camp'], e);
                 else if (activeGoal) {
                     if (storage.wood < activeGoal.w) targetNode = getClosestKnown(['wood'], e);
                     else if (storage.water < activeGoal.wt) targetNode = getClosestKnown(['water'], e);
                     else if (storage.food < activeGoal.f) targetNode = getClosestKnown(['food', 'hunt'], e);
                     else {
-                        targetNode = nodes.camp; 
-                        if (Math.hypot(nodes.camp.x - e.x, nodes.camp.y - e.y) < 15 && e.stam > 10) {
+                        targetNode = getClosestKnown(['camp'], e); 
+                        if (Math.hypot(targetNode.x - e.x, targetNode.y - e.y) < 15 && e.stam > 10) {
                             constructGoal(activeGoal);
                             e.state = "Constructed!";
                             activeGoal = null;
@@ -316,8 +309,8 @@
                     if (storage.water < caps.water * 0.5) targetNode = getClosestKnown(['water'], e);
                     else if (storage.food < caps.food * 0.5) targetNode = getClosestKnown(['food', 'hunt'], e);
                     else if (storage.wood < caps.wood * 0.5) targetNode = getClosestKnown(['wood'], e);
-                    else if (storage.meds < caps.meds * 0.5) targetNode = getClosestKnown(['med'], e); // GATHER MEDS
-                    if (!targetNode) targetNode = nodes.camp; 
+                    else if (storage.meds < caps.meds * 0.5) targetNode = getClosestKnown(['med'], e); 
+                    if (!targetNode) targetNode = getClosestKnown(['camp'], e); 
                 }
             }
 
@@ -361,29 +354,28 @@
                         e.state = "Chopping Wood";
                     } else if (targetNode.type === 'med' && gatherAmt > 0) {
                         e.hp = Math.min(100, e.hp + gatherAmt * 0.5);
-                        storage.meds = Math.min(caps.meds, storage.meds + gatherAmt); // STORE MEDS
+                        storage.meds = Math.min(caps.meds, storage.meds + gatherAmt);
                         if (targetNode.stock !== Infinity) targetNode.stock -= gatherAmt;
                         e.state = "Gathering Herbs";
                     } else if (targetNode.type === 'tox' && gatherAmt > 0) {
                         e.hp -= (2 * simSpeed * dt);
                         if (targetNode.stock !== Infinity) targetNode.stock -= gatherAmt;
                         e.state = "Poisoned!";
-                    } else if (targetNode.type === 'camp') {
+                    } else if (targetNode.type === 'camp' || targetNode.type.includes('Depot')) {
                         e.stam = Math.min(100, e.stam + 0.5 * simSpeed * dt);
-                        if (!e.state.includes("Courting")) e.state = "Resting at Camp";
+                        if (!e.state.includes("Courting")) e.state = "At Base";
                         
-                        if (e.wat < 100 && storage.water > 0) {
+                        if (e.wat < 100 && storage.water > 0 && (targetNode.type === 'camp' || targetNode.type === 'waterDepot')) {
                             let drink = Math.min(100 - e.wat, storage.water, 2 * simSpeed * dt);
                             e.wat += drink; storage.water -= drink;
                             e.state = "Drinking from Storage";
                         }
-                        if (e.food < 100 && storage.food > 0) {
+                        if (e.food < 100 && storage.food > 0 && (targetNode.type === 'camp' || targetNode.type === 'foodDepot')) {
                             let eat = Math.min(100 - e.food, storage.food, 2 * simSpeed * dt);
                             e.food += eat; storage.food -= eat;
                             e.state = "Eating from Storage";
                         }
-                        // HEALING FROM STORAGE
-                        if (e.hp < 100 && storage.meds > 0) {
+                        if (e.hp < 100 && storage.meds > 0 && (targetNode.type === 'camp' || targetNode.type === 'medsDepot')) {
                             let heal = Math.min(100 - e.hp, storage.meds, 3 * simSpeed * dt);
                             e.hp += heal; storage.meds -= heal;
                             e.state = "Healing from Storage";
@@ -400,7 +392,7 @@
                             }
                         }
 
-                        if (!e.hasBed && entities.length > bldgs.camp.cap && simSpeed > 0) {
+                        if (!e.hasBed && entities.length > totalBeds && simSpeed > 0) {
                             let sheltered = entities.filter(o => o.hasBed);
                             if (sheltered.length > 0) {
                                 sheltered.sort((a,b) => a.hp - b.hp); 
@@ -439,20 +431,20 @@
             }
         }
 
-        // ACTUAL MATING EVENT!
-        if (simSpeed > 0 && Math.random() < 0.05 * simSpeed && entities.length < bldgs.camp.cap && storage.food >= 25) {
-            let m = entities.find(e => e.sex === 'M' && e.hp >= 75 && e.partnerId && Math.hypot(e.x - nodes.camp.x, e.y - nodes.camp.y) < 20);
+        if (simSpeed > 0 && Math.random() < 0.05 * simSpeed && entities.length < totalBeds && storage.food >= 25) {
+            let campsOnly = Object.keys(nodes).filter(k => nodes[k].type === 'camp');
+            let m = entities.find(e => e.sex === 'M' && e.hp >= 75 && e.partnerId && campsOnly.some(c => Math.hypot(e.x - nodes[c].x, e.y - nodes[c].y) < 25));
             if (m) {
-                let f = entities.find(e => e.id === m.partnerId && e.hp >= 75 && Math.hypot(e.x - nodes.camp.x, e.y - nodes.camp.y) < 20);
+                let f = entities.find(e => e.id === m.partnerId && e.hp >= 75 && campsOnly.some(c => Math.hypot(e.x - nodes[c].x, e.y - nodes[c].y) < 25));
                 if (f) {
                     let isM = Math.random() > 0.5;
                     entities.push({
                         id: (isM?'M':'F') + entityCounter++, sex: isM?'M':'F', 
-                        x: nodes.camp.x, y: nodes.camp.y, hp: 100, stam: 100, wat: 100, food: 100, 
+                        x: m.x, y: m.y, hp: 100, stam: 100, wat: 100, food: 100, 
                         daysUnsheltered: 0, hasBed: true, partnerId: null, state: 'Just Born!', color: isM?'#3498db':'#fd79a8',
                         memory: JSON.parse(JSON.stringify(tribeKnowledge)), scoutTarget: null
                     });
-                    storage.food -= 15; // Child consumes colony food to grow
+                    storage.food -= 15; 
                 }
             }
         }
@@ -472,7 +464,12 @@
             if (!n.show) continue;
             
             ctx.fillStyle = (n.stock <= 0) ? 'rgba(0,0,0,0.5)' : n.color;
-            ctx.beginPath(); ctx.arc(n.x, n.y, 25, 0, Math.PI*2); ctx.fill();
+            
+            if (n.type.includes('Depot') || n.type === 'camp') {
+                ctx.fillRect(n.x - 20, n.y - 20, 40, 40); // Draw squares for buildings
+            } else {
+                ctx.beginPath(); ctx.arc(n.x, n.y, 25, 0, Math.PI*2); ctx.fill(); // Circles for nature
+            }
             
             ctx.fillStyle = 'white'; ctx.font = '12px Arial'; ctx.textAlign = 'center';
             ctx.fillText(n.name, n.x, n.y - 30);
@@ -507,8 +504,8 @@
         document.getElementById('hud-food').innerText = `🍖 ${Math.floor(storage.food)}/${caps.food}`;
         document.getElementById('hud-water').innerText = `💧 ${Math.floor(storage.water)}/${caps.water}`;
         document.getElementById('hud-meds').innerText = `🌿 ${Math.floor(storage.meds)}/${caps.meds}`;
-        document.getElementById('hud-pop').innerText = `👥 ${entities.length} (🛏️ ${bldgs.camp.cap})`;
-        document.getElementById('hud-day').innerText = `Day: ${Math.floor(timeDay)}`;
+        document.getElementById('hud-pop').innerText = `👥 ${entities.length} (🛏️ ${bldgs.camps * 4})`;
+        document.getElementById('hud-day').innerText = `Day: ${Math.floor(timeDay)} (v6)`;
         document.querySelector('.clickable').innerText = `☠️ ${deceased.length}`;
 
         requestAnimationFrame(loop);
